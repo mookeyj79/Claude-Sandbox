@@ -114,6 +114,7 @@ function claude {
     if ($LASTEXITCODE -ne 0 -and $mounts.Count -gt 0) {
         # Earlier sessions are a convenience: a bad mount shouldn't stop Claude from starting.
         Write-Host "claude-sandbox: couldn't mount earlier sessions, starting without them: $out" -ForegroundColor Yellow
+        Write-Host "claude-sandbox: these mounts need sbx 0.51.0 or newer. Check with: sbx version. Upgrade with: winget upgrade Docker.sbx" -ForegroundColor Yellow
         & sbx rm --force $name *> $null
         $out = & sbx create --name $name claude $path 2>&1
     }
