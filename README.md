@@ -62,7 +62,7 @@ You don't need Docker Desktop. You do need [Git](https://git-scm.com/), to clone
 winget install -h Docker.sbx
 ```
 
-The install is per-user and needs no admin rights. **Close every terminal window** and open a new one so `sbx` is on your PATH, then check it with `sbx version`.
+The install is per-user and needs no admin rights. **Close every terminal window** and open a new one so `sbx` is on your PATH, then check it with `sbx version`. You need **0.51.0 or newer** for Claude to read [earlier sessions](#earlier-sessions).
 
 ### 3. Sign in to Docker
 
@@ -249,7 +249,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host: `sbx secret set github -t "$(gh auth token)"`, then exit and restart `claude`. If the token itself expired, run `gh auth login` first. |
 | Requests to a site fail or hang | `sbx policy approval ls`, or `sbx policy allow network <host>` |
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
-| `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. |
+| `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and upgrade if it's older (`winget upgrade Docker.sbx` on Windows). |
 | `--resume` shows no sessions | Check that the history store has a folder for this project and that `sandbox-setup.sh` is next to the wrapper. |
 | Anything else | `sbx diagnose`. As a last resort, `sbx reset` deletes all sandboxes **and your stored login**. Saved history isn't affected. |
 

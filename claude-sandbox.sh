@@ -119,6 +119,7 @@ _claude_sandbox_main() {
         # Earlier sessions are a convenience: a bad mount shouldn't stop Claude from starting.
         [ "${#mounts[@]}" -gt 0 ] || { echo "$out" >&2; return 1; }
         echo "claude-sandbox: couldn't mount earlier sessions, starting without them: $out" >&2
+        echo "claude-sandbox: these mounts need sbx 0.51.0 or newer. Check with: sbx version" >&2
         sbx rm --force "$name" >/dev/null 2>&1
         if ! out="$(sbx create --name "$name" claude "$(_claude_sandbox_hostpath "$PWD")" 2>&1)"; then
             echo "$out" >&2
