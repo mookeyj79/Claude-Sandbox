@@ -1,7 +1,7 @@
 # Runs `claude` inside a throwaway Docker Sandbox (sbx) instead of directly on Windows.
 #
 # Install: add this line to your PowerShell profile (open it with `notepad $PROFILE`):
-#     . D:\Dev\Claude-Sandbox\claude-sandbox.ps1
+#     . C:\path\to\Claude-Sandbox\claude-sandbox.ps1
 #
 # Usage is unchanged: cd into a project and run `claude`, `claude --resume`, `claude "fix the bug"`, ...
 #   - Every run gets a fresh sandbox that is deleted when Claude exits.

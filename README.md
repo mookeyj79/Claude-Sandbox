@@ -28,7 +28,8 @@ sbx policy init balanced                     # network policy
 sbx secret set github -t "$(gh auth token)"  # GitHub access for git push / gh
 sbx skills add mattpocock/skills             # preload skills
 if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out-Null }
-Add-Content $PROFILE "`n. D:\Dev\Claude-Sandbox\claude-sandbox.ps1"   # load the wrapper
+git clone https://github.com/mookeyj79/Claude-Sandbox.git                  # get the scripts
+Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"          # load the wrapper
 ```
 
 Open a new terminal, `cd` into a project, run `claude`, then `/login` once. Each step is explained below.
@@ -53,7 +54,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
 
 **Linux** (Ubuntu 24.04+, with KVM) and **macOS**: see https://docs.docker.com/ai/sandboxes/install/
 
-You don't need Docker Desktop.
+You don't need Docker Desktop. You do need [Git](https://git-scm.com/), to clone the scripts (`winget install -h Git.Git`).
 
 ### 2. Install `sbx`
 
@@ -109,12 +110,20 @@ sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
 
 To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
 
-### 7. Load the wrapper
+### 7. Get the scripts
 
-**PowerShell:** add this line to your profile (`notepad $PROFILE`):
+Clone this repo anywhere you like. The next step points at that folder.
+
+```
+git clone https://github.com/mookeyj79/Claude-Sandbox.git
+```
+
+### 8. Load the wrapper
+
+**PowerShell:** add this line to your profile (`notepad $PROFILE`), using the folder you cloned into:
 
 ```powershell
-. D:\Dev\Claude-Sandbox\claude-sandbox.ps1
+. C:\path\to\Claude-Sandbox\claude-sandbox.ps1
 ```
 
 The leading `. ` (dot, space) is required. Without it the `claude` function disappears as soon as the script ends. If your profile is split into include files (such as `conf.d\*.ps1`), the line can go in one of those.
@@ -122,10 +131,10 @@ The leading `. ` (dot, space) is required. Without it the `claude` function disa
 **bash / zsh / Git Bash:** add this to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-source /path/to/claude-sandbox.sh
+source /path/to/Claude-Sandbox/claude-sandbox.sh
 ```
 
-### 8. First run
+### 9. First run
 
 ```
 cd D:\Dev\my-project
@@ -220,6 +229,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 - **Skills** update automatically: the wrapper runs `sbx skills update` in the background at most once a day. To update now: `sbx skills update`.
 - **Claude Code** updates inside each sandbox before it starts, so a new session is already on the latest version. If the update fails, Claude starts on the image's version.
 - **`sbx`:** `winget upgrade Docker.sbx`
+- **These scripts:** run `git pull` in the folder you cloned. The next `claude` run uses the new versions (open a new terminal first, so the wrapper reloads).
 
 ## Limitations
 
@@ -247,4 +257,12 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 
 1. Remove the wrapper line from your PowerShell profile or `~/.bashrc`.
 2. `sbx reset` deletes all sandboxes, secrets and the network policy. Then run `winget uninstall Docker.sbx`.
-3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\`) and `~/.claude-sandbox-skills-updated`.
+3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\`), `~/.claude-sandbox-skills-updated` and the folder you cloned.
+
+## Issues
+
+Report bugs and requests in [GitHub Issues](https://github.com/mookeyj79/Claude-Sandbox/issues).
+
+## License
+
+[MIT](LICENSE)
