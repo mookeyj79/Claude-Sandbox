@@ -198,11 +198,11 @@ Ask naturally, such as "check how we fixed this in the blog project". Other limi
 
 Each `claude` run:
 
-1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them.
+1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them. If the save fails, it warns you and keeps the sandbox to retry on the next run.
 2. **Creates** a sandbox named `claude-<folder>-<hash>-<id>`. The hash of the full path keeps `D:\Dev\api` and `D:\Work\api` apart. The random id lets several windows share a folder.
 3. **Restores** that folder's history, mounts earlier sessions read-only, updates Claude Code and applies your defaults, using `sandbox-setup.sh`.
 4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
-5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox.
+5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
 
 **History store:** `%LOCALAPPDATA%\claude-sandbox\history\` on Windows (shared by PowerShell and Git Bash), or `~/.local/share/claude-sandbox/history/` on Linux/macOS. There's one folder per project, holding session files (`projects/`) and prompt history (`history.jsonl`). Delete a project's folder to forget its history.
 
@@ -250,6 +250,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | Requests to a site fail or hang | `sbx policy approval ls`, or `sbx policy allow network <host>` |
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
 | `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and upgrade if it's older (`winget upgrade Docker.sbx` on Windows). |
+| `couldn't save history from <name>` | The sandbox was kept so its sessions aren't lost, and each `claude` run retries the save. If it keeps failing and you don't need those sessions, run `sbx rm --force <name>`. |
 | `--resume` shows no sessions | Check that the history store has a folder for this project and that `sandbox-setup.sh` is next to the wrapper. |
 | Anything else | `sbx diagnose`. As a last resort, `sbx reset` deletes all sandboxes **and your stored login**. Saved history isn't affected. |
 

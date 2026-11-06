@@ -62,28 +62,45 @@ _claude_sandbox_name() {
 }
 
 # Copy a sandbox's session history into the host store for its project.
+# Returns non-zero if anything went wrong, in which case the sandbox must not be deleted.
 _claude_sandbox_save() {
-    local sandbox="$1" base="$2" store tmp
+    local sandbox="$1" base="$2" store tmp failed=0
     store="$(_claude_sandbox_store_root)/$base"
-    tmp="$(mktemp -d)"
+    tmp="$(mktemp -d)" || return 1
     mkdir -p "$store/projects"
-    sbx cp "$sandbox:/home/agent/.claude/projects" "$(_claude_sandbox_hostpath "$tmp")/projects" >/dev/null 2>&1
+    sbx cp "$sandbox:/home/agent/.claude/projects" "$(_claude_sandbox_hostpath "$tmp")/projects" >/dev/null 2>&1 || failed=1
+    # Not checked: history.jsonl doesn't exist until the first prompt is typed.
     sbx cp "$sandbox:/home/agent/.claude/history.jsonl" "$(_claude_sandbox_hostpath "$tmp")/history.jsonl" >/dev/null 2>&1
     rm -rf "$tmp/projects/lost+found"
-    [ -d "$tmp/projects" ] && cp -r "$tmp/projects/." "$store/projects/"
-    [ -f "$tmp/history.jsonl" ] && cp "$tmp/history.jsonl" "$store/history.jsonl"
+    if [ -d "$tmp/projects" ]; then
+        cp -r "$tmp/projects/." "$store/projects/" || failed=1
+    else
+        failed=1
+    fi
+    if [ -f "$tmp/history.jsonl" ]; then
+        cp "$tmp/history.jsonl" "$store/history.jsonl" || failed=1
+    fi
     rm -rf "$tmp"
+    return "$failed"
+}
+
+_claude_sandbox_warn_kept() {
+    echo "claude-sandbox: WARNING: couldn't save history from $1, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $1" >&2
 }
 
 # Sandboxes left behind (window closed, crash): save their history, then delete them.
+# A sandbox whose save fails stays stopped, so the next run retries it.
 # Only *stopped* ones are touched; a running one may belong to another open window.
 _claude_sandbox_sweep() {
     local name
     sbx ls 2>/dev/null | awk 'NR > 1 && $4 == "stopped" { print $1 }' | while read -r name; do
         if printf '%s' "$name" | grep -Eq '^claude-.+-[0-9a-f]{8}(-[a-z0-9]{4})?$'; then
             echo "claude-sandbox: cleaning up leftover sandbox $name" >&2
-            _claude_sandbox_save "$name" "$(printf '%s' "$name" | sed -E 's/^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$/\1/')"
-            sbx rm --force "$name" >/dev/null 2>&1
+            if _claude_sandbox_save "$name" "$(printf '%s' "$name" | sed -E 's/^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$/\1/')"; then
+                sbx rm --force "$name" >/dev/null 2>&1
+            else
+                _claude_sandbox_warn_kept "$name"
+            fi
         fi
     done
 }
@@ -129,8 +146,13 @@ _claude_sandbox_main() {
 
     trap '
         echo "claude-sandbox: saving history and removing '"$name"'" >&2
-        _claude_sandbox_save "'"$name"'" "'"$base"'"
-        sbx rm --force "'"$name"'" >/dev/null 2>&1
+        if _claude_sandbox_save "'"$name"'" "'"$base"'"; then
+            sbx rm --force "'"$name"'" >/dev/null 2>&1
+        else
+            # Stopped, not left running: the sweep only retries stopped sandboxes.
+            sbx stop "'"$name"'" >/dev/null 2>&1
+            _claude_sandbox_warn_kept "'"$name"'"
+        fi
     ' EXIT
     trap 'exit 130' INT TERM HUP
 
