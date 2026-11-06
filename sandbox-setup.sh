@@ -6,8 +6,9 @@ c="$HOME/.claude"
 in=/tmp/claude-hist   # host history staged here by `sbx cp` (files arrive owned by root)
 
 # Restore saved session history so --resume / --continue work.
+# Always create projects/: the wrappers treat failing to copy it out as a failed save.
+mkdir -p "$c/projects"
 if [ -d "$in/projects" ]; then
-    mkdir -p "$c/projects"
     cp -r "$in/projects/." "$c/projects/" 2>/dev/null
 fi
 [ -f "$in/history.jsonl" ] && cp "$in/history.jsonl" "$c/history.jsonl"

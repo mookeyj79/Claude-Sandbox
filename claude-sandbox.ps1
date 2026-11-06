@@ -38,35 +38,53 @@ function Get-ClaudeSandboxName {
 
 function Save-ClaudeSandboxHistory {
     # Copy a sandbox's session history into the host store for its project.
+    # Returns $false if anything went wrong, in which case the sandbox must not be deleted.
     param([string]$Sandbox, [string]$Base)
     $store = Join-Path $script:ClaudeSandboxStore $Base
     $tmp   = Join-Path ([IO.Path]::GetTempPath()) "claude-sandbox-$Sandbox"
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $tmp, (Join-Path $store 'projects') | Out-Null
+    $ok = $true
     & sbx cp "${Sandbox}:/home/agent/.claude/projects" (Join-Path $tmp 'projects') *> $null
+    if ($LASTEXITCODE -ne 0) { $ok = $false }
+    # Not checked: history.jsonl doesn't exist until the first prompt is typed.
     & sbx cp "${Sandbox}:/home/agent/.claude/history.jsonl" (Join-Path $tmp 'history.jsonl') *> $null
     Remove-Item (Join-Path $tmp 'projects\lost+found') -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path (Join-Path $tmp 'projects')) {
         # Merge (session files have unique names, so concurrent windows don't clobber each other)
         robocopy (Join-Path $tmp 'projects') (Join-Path $store 'projects') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+        if ($LASTEXITCODE -ge 8) { $ok = $false }   # robocopy: 0-7 mean success, 8 and up mean failure
         $global:LASTEXITCODE = 0
+    } else {
+        $ok = $false
     }
     if (Test-Path (Join-Path $tmp 'history.jsonl')) {
-        Copy-Item (Join-Path $tmp 'history.jsonl') $store -Force
+        try { Copy-Item (Join-Path $tmp 'history.jsonl') $store -Force -ErrorAction Stop }
+        catch { $ok = $false }
     }
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    return $ok
+}
+
+function Write-ClaudeSandboxKeptWarning {
+    param([string]$Sandbox)
+    Write-Host "claude-sandbox: WARNING: couldn't save history from $Sandbox, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $Sandbox" -ForegroundColor Yellow
 }
 
 function Invoke-ClaudeSandboxSweep {
     # Sandboxes left behind (window closed with X, crash): save their history, then delete them.
+    # A sandbox whose save fails stays stopped, so the next run retries it.
     # Only *stopped* ones are touched; a running one may belong to another open window.
     $list = & sbx ls --json 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue
     foreach ($s in @($list)) {
         if ($s.status -ne 'stopped') { continue }
         if ($s.name -match '^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$') {
             Write-Host "claude-sandbox: cleaning up leftover sandbox $($s.name)" -ForegroundColor DarkGray
-            Save-ClaudeSandboxHistory $s.name $Matches[1]
-            & sbx rm --force $s.name *> $null
+            if (Save-ClaudeSandboxHistory $s.name $Matches[1]) {
+                & sbx rm --force $s.name *> $null
+            } else {
+                Write-ClaudeSandboxKeptWarning $s.name
+            }
         }
     }
 }
@@ -133,7 +151,12 @@ function claude {
     }
     finally {
         Write-Host "claude-sandbox: saving history and removing $name" -ForegroundColor DarkGray
-        Save-ClaudeSandboxHistory $name $base
-        & sbx rm --force $name *> $null
+        if (Save-ClaudeSandboxHistory $name $base) {
+            & sbx rm --force $name *> $null
+        } else {
+            # Stopped, not left running: the sweep only retries stopped sandboxes.
+            & sbx stop $name *> $null
+            Write-ClaudeSandboxKeptWarning $name
+        }
     }
 }
