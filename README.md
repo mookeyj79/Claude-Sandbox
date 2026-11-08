@@ -8,7 +8,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Matt Pocock's skills** are preloaded and refreshed daily.
+- **Matt Pocock's skills** are preloaded and refreshed daily, plus this repo's own [`/clean-git`](skills/clean-git/SKILL.md).
 
 | File | Purpose |
 |---|---|
@@ -16,6 +16,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
+| `skills/` | Skills this repo adds to every sandbox (installed with `sbx skills add`, step 6) |
 
 Keep all four files in the same folder.
 
@@ -27,6 +28,7 @@ sbx login                                    # sign in to Docker (device code in
 sbx policy init balanced                     # network policy
 sbx secret set github -t "$(gh auth token)"  # GitHub access for git push / gh
 sbx skills add mattpocock/skills             # preload skills
+sbx skills add mookeyj79/Claude-Sandbox      # this repo's skills (/clean-git)
 if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out-Null }
 git clone https://github.com/mookeyj79/Claude-Sandbox.git                  # get the scripts
 Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"          # load the wrapper
@@ -107,6 +109,16 @@ This installs every skill in the repo, including drafts that the Claude plugin l
 ```
 sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
 ```
+
+Then add this repo's own skills:
+
+```
+sbx skills add mookeyj79/Claude-Sandbox
+```
+
+| Skill | What it does |
+|---|---|
+| `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
 
 To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
 
