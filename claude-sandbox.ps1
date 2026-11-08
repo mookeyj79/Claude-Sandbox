@@ -100,6 +100,18 @@ function claude {
         return
     }
 
+    # Install this repo's skills (skills/) once. Retried on the next run if it fails.
+    $added = Join-Path $HOME '.claude-sandbox-skills-added'
+    if (-not (Test-Path $added)) {
+        Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" -ForegroundColor DarkGray
+        sbx skills add mookeyj79/Claude-Sandbox *> $null
+        if ($LASTEXITCODE -eq 0) {
+            Set-Content -Path $added -Value (Get-Date -Format o)
+        } else {
+            Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" -ForegroundColor Yellow
+        }
+    }
+
     # Refresh skills added with `sbx skills add` at most once a day, in the background.
     $stamp = Join-Path $HOME '.claude-sandbox-skills-updated'
     if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {

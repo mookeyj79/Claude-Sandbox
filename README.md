@@ -16,7 +16,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
-| `skills/` | Skills this repo adds to every sandbox (installed with `sbx skills add`, step 6) |
+| `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on first run |
 
 Keep all four files in the same folder.
 
@@ -28,7 +28,6 @@ sbx login                                    # sign in to Docker (device code in
 sbx policy init balanced                     # network policy
 sbx secret set github -t "$(gh auth token)"  # GitHub access for git push / gh
 sbx skills add mattpocock/skills             # preload skills
-sbx skills add mookeyj79/Claude-Sandbox      # this repo's skills (/clean-git)
 if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out-Null }
 git clone https://github.com/mookeyj79/Claude-Sandbox.git                  # get the scripts
 Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"          # load the wrapper
@@ -110,11 +109,7 @@ This installs every skill in the repo, including drafts that the Claude plugin l
 sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
 ```
 
-Then add this repo's own skills:
-
-```
-sbx skills add mookeyj79/Claude-Sandbox
-```
+The wrappers also install this repo's own skills on the first `claude` run (`sbx skills add mookeyj79/Claude-Sandbox`), so there's nothing to do for these:
 
 | Skill | What it does |
 |---|---|
@@ -270,7 +265,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 
 1. Remove the wrapper line from your PowerShell profile or `~/.bashrc`.
 2. `sbx reset` deletes all sandboxes, secrets and the network policy. Then run `winget uninstall Docker.sbx`.
-3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\`), `~/.claude-sandbox-skills-updated` and the folder you cloned.
+3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\`), `~/.claude-sandbox-skills-updated`, `~/.claude-sandbox-skills-added` and the folder you cloned.
 
 ## Issues
 
