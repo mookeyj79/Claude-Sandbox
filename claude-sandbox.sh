@@ -108,6 +108,17 @@ _claude_sandbox_sweep() {
 _claude_sandbox_main() {
     export MSYS_NO_PATHCONV=1   # Git Bash: don't rewrite "name:/tmp/..." arguments
 
+    # Install this repo's skills (skills/) once. Retried on the next run if it fails.
+    local added="$HOME/.claude-sandbox-skills-added"
+    if [ ! -f "$added" ]; then
+        echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" >&2
+        if sbx skills add mookeyj79/Claude-Sandbox </dev/null >/dev/null 2>&1; then
+            date > "$added"
+        else
+            echo "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" >&2
+        fi
+    fi
+
     # Refresh skills added with `sbx skills add` at most once a day, in the background.
     local stamp="$HOME/.claude-sandbox-skills-updated"
     if [ -z "$(find "$stamp" -mmin -1440 2>/dev/null)" ]; then
