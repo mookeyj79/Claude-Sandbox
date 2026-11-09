@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""A stand-in for the `sbx` CLI, for the wrapper tests. Both wrappers' tests put this first on PATH
+(Windows uses sbx.cmd, which runs this file).
+
+All state lives under $FAKE_SBX_DIR:
+  calls                      every invocation, one JSON array of arguments per line
+  sandboxes/<name>/status    running | stopped
+  sandboxes/<name>/fs/...    the sandbox's filesystem, for `sbx cp`
+  sandboxes/<name>/fail-cp   if present, every `sbx cp` touching this sandbox fails
+  skill-<name>               how `sbx skills add --skill <name>` behaves:
+                               ok (default) | notty | fail | hang
+  create-fails-with-mounts   if present, `sbx create` with extra mounts fails
+  ls-plain                   if present, `sbx ls` prints statuses without the leading dot
+"""
+import json
+import os
+import re
+import shutil
+import sys
+import time
+
+STATE = os.environ["FAKE_SBX_DIR"]
+SANDBOXES = os.path.join(STATE, "sandboxes")
+SANDBOX_PATH = re.compile(r"^([A-Za-z0-9_.-]{2,}):(/.*)$")   # name:/path, never a drive letter
+
+
+def read(path, default=""):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(text)
+
+
+def resolve(arg):
+    """Map an `sbx cp` argument to (sandbox name or None, local path)."""
+    m = SANDBOX_PATH.match(arg)
+    if not m:
+        return None, arg
+    name, path = m.groups()
+    return name, os.path.join(SANDBOXES, name, "fs", path.lstrip("/"))
+
+
+def cmd_cp(src, dst):
+    (s_box, s), (d_box, d) = resolve(src), resolve(dst)
+    for box in (s_box, d_box):
+        if box and (not os.path.isdir(os.path.join(SANDBOXES, box))
+                    or os.path.exists(os.path.join(SANDBOXES, box, "fail-cp"))):
+            print(f"cp failed: {box}", file=sys.stderr)
+            return 1
+    if not os.path.exists(s):
+        print(f"no such file: {src}", file=sys.stderr)
+        return 1
+    os.makedirs(os.path.dirname(os.path.abspath(d)), exist_ok=True)
+    if os.path.isdir(s):
+        shutil.copytree(s, d, dirs_exist_ok=True)
+    else:
+        shutil.copyfile(s, d)
+    return 0
+
+
+def cmd_ls(args):
+    rows = []
+    if os.path.isdir(SANDBOXES):
+        for name in sorted(os.listdir(SANDBOXES)):
+            rows.append({"name": name, "agent": "claude", "status": read(os.path.join(SANDBOXES, name, "status"))})
+    if "--json" in args:
+        # Shape of the real output (sbx ls --json), extra fields included.
+        print(json.dumps([{
+            "name": r["name"], "id": "25448636-451a-4e3d-989c-82148504cd16", "agent": r["agent"],
+            "status": r["status"], "last_used_at": "2026-11-09T20:11:09.9219543Z",
+            "mounts": ["D:\\My Projects\\x:/d/My Projects/x"], "workspaces": ["D:\\My Projects\\x"],
+            "created_at": "2026-11-09T20:10:44Z"} for r in rows], indent=2))
+    else:
+        # Same layout as the real table, including the leading blank line and the status dot.
+        # ls-plain: leave the dot off, as sbx may when its output isn't a terminal.
+        print()
+        print("  SANDBOX                     AGENT    STATUS      PORTS   WORKSPACE                     CREATED")
+        for r in rows:
+            plain = os.path.exists(os.path.join(STATE, "ls-plain"))
+            dot = "●" if r["status"] == "running" else "○"
+            status = r["status"] if plain else f"{dot} {r['status']}"
+            print(f"  {r['name']:<27} {r['agent']:<8} {status:<11} {'':<7} D:\\My Projects\\x, C:\\h:/claude-history-sandbox:ro   42m")
+    return 0
+
+
+def cmd_skills(args):
+    if args[:1] == ["update"]:
+        return 0
+    if args[:1] == ["add"] and "--skill" in args:
+        skill = args[args.index("--skill") + 1]
+        mode = read(os.path.join(STATE, f"skill-{skill}"), "ok")
+        if mode == "hang":
+            time.sleep(600)
+        if mode == "notty":
+            print("Overwrite? Error: stdin is not a terminal", file=sys.stderr)
+            return 1
+        if mode == "fail":
+            print(f"skill {skill}: network error", file=sys.stderr)
+            return 1
+        return 0
+    print(f"fake sbx: unsupported skills call {args}", file=sys.stderr)
+    return 2
+
+
+def main(argv):
+    with open(os.path.join(STATE, "calls"), "a") as f:
+        f.write(json.dumps(argv) + "\n")
+    cmd, args = (argv[0], argv[1:]) if argv else ("", [])
+
+    if cmd == "create":
+        name = args[args.index("--name") + 1]
+        extra = args[args.index("--name") + 4:]   # after: --name <name> claude <workspace>
+        if extra and os.path.exists(os.path.join(STATE, "create-fails-with-mounts")):
+            print("invalid mount", file=sys.stderr)
+            return 1
+        write(os.path.join(SANDBOXES, name, "status"), "running")
+        os.makedirs(os.path.join(SANDBOXES, name, "fs"), exist_ok=True)
+        return 0
+    if cmd == "cp":
+        return cmd_cp(args[-2], args[-1])
+    if cmd == "exec":
+        rest = [a for a in args if a not in ("-i", "-it")]
+        name = rest[0]
+        # The real setup script always creates ~/.claude/projects; the fake does the same.
+        if rest[1:3] == ["bash", "/tmp/claude-sandbox-setup.sh"]:
+            os.makedirs(os.path.join(SANDBOXES, name, "fs", "home/agent/.claude/projects"), exist_ok=True)
+        return int(read(os.path.join(SANDBOXES, name, "exec-exit"), "0"))
+    if cmd == "stop":
+        write(os.path.join(SANDBOXES, args[0], "status"), "stopped")
+        return 0
+    if cmd == "rm":
+        shutil.rmtree(os.path.join(SANDBOXES, args[-1]), ignore_errors=True)
+        return 0
+    if cmd == "ls":
+        return cmd_ls(args)
+    if cmd == "skills":
+        return cmd_skills(args)
+    print(f"fake sbx: unsupported command {argv}", file=sys.stderr)
+    return 2
+
+
+sys.exit(main(sys.argv[1:]))

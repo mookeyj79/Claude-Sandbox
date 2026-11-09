@@ -19,6 +19,8 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
+| `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `bats tests/`, or `Invoke-Pester tests` (Pester 5) on Windows |
+| `GLOSSARY.md` | The terms the code and docs use (project key, history store, sweep, ...) |
 
 Keep these files and `skills/` together, as the clone leaves them: the wrappers look for the others next to themselves.
 
@@ -189,7 +191,7 @@ $env:CLAUDE_SANDBOX_EFFORT          = 'medium'    # low | medium | high | ...
 $env:CLAUDE_SANDBOX_PERMISSION_MODE = 'auto'      # auto | bypassPermissions | default | acceptEdits | plan
 ```
 
-An empty string keeps the sandbox's own default. For the permission mode, that default is `bypassPermissions`.
+`unset` keeps the sandbox's own default (bash also accepts an empty string). For the permission mode, that default is `bypassPermissions`.
 
 ### Earlier sessions
 

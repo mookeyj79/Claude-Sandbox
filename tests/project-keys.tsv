@@ -1,0 +1,13 @@
+# Project keys both wrappers must produce for the same folder, so Git Bash and PowerShell share
+# history. Columns (tab-separated): Windows path, as PowerShell or 'pwd -W' gives it; project key.
+# Checked by tests/project-keys.bats and tests/project-keys.Tests.ps1.
+C:\Users\Me\Projects\Claude-Sandbox	claude-claude-sandbox-597f7031
+C:/Users/Me/Projects/Claude-Sandbox	claude-claude-sandbox-597f7031
+C:\Users\Me\Projects\Claude-Sandbox\	claude-claude-sandbox-597f7031
+D:\work\My Project (1)	claude-my-project-1-6fe0c85c
+C:\	claude-c-826c0d7d
+C:\Users\me\a-very-long-folder-name-that-gets-cut-off-here	claude-a-very-long-folder-name-2a39c3bd
+C:\Users\me\---weird...name---	claude-weird-name-571347e9
+C:\Users\me\x.y_z	claude-x-y-z-ce42827b
+C:\Users\Ölaf\Projekt	claude-projekt-087be364
+C:\Users\me\ÜBER	claude-ber-a2b85091
