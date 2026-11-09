@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Runs `claude` inside a throwaway Docker Sandbox (sbx) instead of directly on the host.
 # Works in Linux/macOS bash or zsh, and Git Bash on Windows.
 #
@@ -45,6 +46,7 @@ _claude_sandbox_name() {
     local norm hash leaf
     if _claude_sandbox_is_windows; then
         # Match the PowerShell wrapper: Windows path, backslashes, lowercase.
+        # shellcheck disable=SC1003  # '\\' is a literal backslash for tr, not an escaped quote
         norm="$(pwd -W | tr '/' '\\' | tr '[:upper:]' '[:lower:]')"
         norm="${norm%\\}"
     else
