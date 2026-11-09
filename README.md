@@ -16,9 +16,11 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
-| `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on first run |
+| `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
 
-Keep all four files in the same folder.
+Keep these files and `skills/` together, as the clone leaves them: the wrappers look for the others next to themselves.
+
+**Contents:** [Quick start](#quick-start-windows) · [Setup](#setup) · [Verify it's working](#verify-its-working) · [Usage](#usage) · [How it works](#how-it-works) · [Managing sandboxes](#managing-sandboxes) · [Updating](#updating) · [Limitations](#limitations) · [Troubleshooting](#troubleshooting) · [Uninstall](#uninstall)
 
 ## Quick start (Windows)
 
@@ -111,7 +113,7 @@ This installs every skill in the repo, including drafts that the Claude plugin l
 sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
 ```
 
-The wrappers also install this repo's own skills on the first `claude` run (`sbx skills add mookeyj79/Claude-Sandbox`), so there's nothing to do for these:
+The wrappers also install this repo's own skills (`sbx skills add mookeyj79/Claude-Sandbox`) the first time you run `claude`, and install any new skill on the next run after a `git pull`. There's nothing to do for these:
 
 | Skill | What it does |
 |---|---|
@@ -214,7 +216,7 @@ Each `claude` run:
 4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
 5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
 
-**History store:** `%LOCALAPPDATA%\claude-sandbox\history\` on Windows (shared by PowerShell and Git Bash), or `~/.local/share/claude-sandbox/history/` on Linux/macOS. There's one folder per project, holding session files (`projects/`) and prompt history (`history.jsonl`). Delete a project's folder to forget its history.
+**History store:** `%LOCALAPPDATA%\claude-sandbox\history\` on Windows (shared by PowerShell and Git Bash), or `~/.local/share/claude-sandbox/history/` on Linux/macOS (under `$XDG_DATA_HOME` instead, if you set it). There's one folder per project, holding session files (`projects/`) and prompt history (`history.jsonl`). Delete a project's folder to forget its history.
 
 **Good to know:**
 - Several windows on one folder never lose sessions, because session files have unique names. Only the up-arrow prompt history keeps whichever window closed last.

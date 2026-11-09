@@ -100,17 +100,24 @@ function claude {
         return
     }
 
-    # Install this repo's skills (skills/) once. Retried on the next run if it fails.
+    # Install this repo's skills (skills/) that aren't installed yet, so a skill added to the
+    # repo is picked up after `git pull`. The marker lists the installed skills, one per line.
+    # `sbx skills update` won't do this: it only refreshes skills that are already installed.
+    # Retried on the next run if it fails.
     $added = Join-Path $HOME '.claude-sandbox-skills-added'
-    if (-not (Test-Path $added)) {
-        Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" -ForegroundColor DarkGray
+    $have = @(if (Test-Path $added) { Get-Content $added })
+    $missing = @(Get-ChildItem -Directory (Join-Path $script:ClaudeSandboxDir 'skills') -ErrorAction SilentlyContinue |
+        ForEach-Object Name | Where-Object { $have -notcontains $_ })
+    if ($missing.Count -gt 0) {
+        $skillArgs = @($missing | ForEach-Object { '--skill', $_ })
+        Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: $($missing -join ' ')" -ForegroundColor DarkGray
         # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
         # waiting forever behind hidden output, and Claude still starts.
         $in  = New-TemporaryFile
         $log = New-TemporaryFile
         $err = New-TemporaryFile
         try {
-            $p = Start-Process sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox' -NoNewWindow -PassThru `
+            $p = Start-Process sbx -ArgumentList (@('skills', 'add', 'mookeyj79/Claude-Sandbox') + $skillArgs) -NoNewWindow -PassThru `
                 -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
             $null = $p.Handle   # without this, ExitCode can come back empty
             if (-not $p.WaitForExit(120000)) {
@@ -118,10 +125,10 @@ function claude {
                 Write-Host "claude-sandbox: skill install took over 2 minutes, skipped." -ForegroundColor Yellow
             }
             if ($p.HasExited -and $p.ExitCode -eq 0) {
-                Set-Content -Path $added -Value (Get-Date -Format o)
+                Add-Content -Path $added -Value $missing
             } else {
                 Get-Content $log, $err | Write-Host
-                Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" -ForegroundColor Yellow
+                Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox $($skillArgs -join ' ')" -ForegroundColor Yellow
             }
         } finally {
             Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
