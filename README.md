@@ -1,5 +1,7 @@
 # Claude Code in Docker Sandboxes
 
+[![Lint](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/lint.yml/badge.svg)](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/lint.yml)
+
 Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) (`sbx`) while typing `claude` exactly as before.
 
 - **Same commands:** `claude`, `claude --resume`, `claude -c`, `claude "fix the bug"`, ...
