@@ -22,19 +22,19 @@ Describe 'Sync-ClaudeSandboxSkill' {
         Sync-ClaudeSandboxSkill $repo 6>&1 | Should -BeNullOrEmpty
         Get-Content $added | Should -Be @('alpha', 'beta')
         Get-SbxCall | Should -Be @(
-            'skills add mookeyj79/Claude-Sandbox --skill alpha',
-            'skills add mookeyj79/Claude-Sandbox --skill beta')
+            'skills add mookeyj79/Claude-Sandbox --skill alpha --no-input',
+            'skills add mookeyj79/Claude-Sandbox --skill beta --no-input')
     }
 
     It 'skips skills already recorded' {
         Set-Content $added 'alpha'
         Sync-ClaudeSandboxSkill $repo
-        Get-SbxCall | Should -Be @('skills add mookeyj79/Claude-Sandbox --skill beta')
+        Get-SbxCall | Should -Be @('skills add mookeyj79/Claude-Sandbox --skill beta --no-input')
         Get-Content $added | Should -Be @('alpha', 'beta')
     }
 
-    It "counts a skill sbx won't overwrite without a terminal as installed" {
-        Set-Content (Join-Path $env:FAKE_SBX_DIR 'skill-alpha') 'notty'
+    It "counts a skill that is already installed as installed" {
+        Set-Content (Join-Path $env:FAKE_SBX_DIR 'skill-alpha') 'exists'
         Sync-ClaudeSandboxSkill $repo 6>&1 | Should -BeNullOrEmpty
         Get-Content $added | Should -Be @('alpha', 'beta')
     }

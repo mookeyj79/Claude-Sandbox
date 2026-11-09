@@ -178,13 +178,13 @@ _claude_sandbox_sync_skills() {
         skill=$(basename "$skill")
         [ "$skill" = "*" ] && continue
         grep -qxF "$skill" "$added" 2>/dev/null && continue
-        # One skill per call. If the skill is already installed (say, by an earlier manual
-        # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
-        # "stdin is not a terminal". With a single named skill that question is the only one it
-        # can ask, so the skill is there and counts as installed.
-        out=$(_claude_sandbox_with_limit "$limit" sbx skills add mookeyj79/Claude-Sandbox --skill "$skill" </dev/null 2>&1)
+        # One skill per call, with --no-input. If the skill is already installed (say, by an
+        # earlier manual `sbx skills add`), sbx would ask before overwriting it; --no-input makes
+        # it fail with "prompts are disabled by --no-input" instead. For a single named skill
+        # that's the only question it can ask, so the skill is there and counts as installed.
+        out=$(_claude_sandbox_with_limit "$limit" sbx skills add mookeyj79/Claude-Sandbox --skill "$skill" --no-input </dev/null 2>&1)
         rc=$?
-        if [ "$rc" -eq 0 ] || [[ "$out" == *"not a terminal"* ]]; then
+        if [ "$rc" -eq 0 ] || [[ "$out" == *"prompts are disabled by --no-input"* ]]; then
             echo "$skill" >> "$added"
         else
             [ "$rc" -eq 143 ] && echo "claude-sandbox: installing skill $skill took over ${limit}s, skipped." >&2

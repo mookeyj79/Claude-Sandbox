@@ -8,7 +8,8 @@ All state lives under $FAKE_SBX_DIR:
   sandboxes/<name>/fs/...    the sandbox's filesystem, for `sbx cp`
   sandboxes/<name>/fail-cp   if present, every `sbx cp` touching this sandbox fails
   skill-<name>               how `sbx skills add --skill <name>` behaves:
-                               ok (default) | notty | fail | hang
+                               ok (default) | exists | fail | hang
+                             exists: already installed, so sbx would ask before overwriting
   create-fails-with-mounts   if present, `sbx create` with extra mounts fails
   ls-plain                   if present, `sbx ls` prints statuses without the leading dot
 """
@@ -98,8 +99,12 @@ def cmd_skills(args):
         mode = read(os.path.join(STATE, f"skill-{skill}"), "ok")
         if mode == "hang":
             time.sleep(600)
-        if mode == "notty":
-            print("Overwrite? Error: stdin is not a terminal", file=sys.stderr)
+        if mode == "exists":
+            if "--no-input" in args:   # the real message (sbx skills add ... --no-input)
+                print("\n  error: prompts are disabled by --no-input; run without --no-input to answer the prompt\n"
+                      "    try: sbx skills add --help", file=sys.stderr)
+            else:
+                print("Overwrite? Error: stdin is not a terminal", file=sys.stderr)
             return 1
         if mode == "fail":
             print(f"skill {skill}: network error", file=sys.stderr)
