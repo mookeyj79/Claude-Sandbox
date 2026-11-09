@@ -18,18 +18,18 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     [ "$status" -eq 0 ]
     [ "$output" = "" ]
     [ "$(installed)" = $'alpha\nbeta' ]
-    [ "$(sbx_calls)" = $'skills add mookeyj79/Claude-Sandbox --skill alpha\nskills add mookeyj79/Claude-Sandbox --skill beta' ]
+    [ "$(sbx_calls)" = $'skills add mookeyj79/Claude-Sandbox --skill alpha --no-input\nskills add mookeyj79/Claude-Sandbox --skill beta --no-input' ]
 }
 
 @test "skips skills already recorded" {
     echo alpha > "$HOME/.claude-sandbox-skills-added"
     _claude_sandbox_sync_skills "$repo"
-    [ "$(sbx_calls)" = "skills add mookeyj79/Claude-Sandbox --skill beta" ]
+    [ "$(sbx_calls)" = "skills add mookeyj79/Claude-Sandbox --skill beta --no-input" ]
     [ "$(installed)" = $'alpha\nbeta' ]
 }
 
-@test "a skill sbx won't overwrite without a terminal counts as installed" {
-    echo notty > "$FAKE_SBX_DIR/skill-alpha"
+@test "a skill that's already installed counts as installed" {
+    echo exists > "$FAKE_SBX_DIR/skill-alpha"
     run _claude_sandbox_sync_skills "$repo"
     [ "$output" = "" ]
     [ "$(installed)" = $'alpha\nbeta' ]

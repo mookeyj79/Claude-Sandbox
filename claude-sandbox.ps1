@@ -42,18 +42,17 @@ function Sync-ClaudeSandboxSkill {
     $have = @(if (Test-Path $added) { Get-Content $added })
     $missing = @(Get-ChildItem -Directory (Join-Path $RepoDir 'skills') -ErrorAction SilentlyContinue |
         ForEach-Object Name | Where-Object { $have -notcontains $_ })
-    # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
-    # waiting forever behind hidden output, and Claude still starts.
-    # One skill per call. If the skill is already installed (say, by an earlier manual
-    # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
-    # "stdin is not a terminal". With a single named skill that question is the only one it
-    # can ask, so the skill is there and counts as installed.
+    # Empty stdin and a time limit, so a stuck install can't keep Claude from starting.
+    # One skill per call, with --no-input. If the skill is already installed (say, by an
+    # earlier manual `sbx skills add`), sbx would ask before overwriting it; --no-input makes
+    # it fail with "prompts are disabled by --no-input" instead. For a single named skill
+    # that's the only question it can ask, so the skill is there and counts as installed.
     foreach ($skill in $missing) {
         $in  = New-TemporaryFile
         $log = New-TemporaryFile
         $err = New-TemporaryFile
         try {
-            $p = Start-Process $sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill -NoNewWindow -PassThru `
+            $p = Start-Process $sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill, '--no-input' -NoNewWindow -PassThru `
                 -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
             $null = $p.Handle   # without this, ExitCode can come back empty
             if (-not $p.WaitForExit($script:ClaudeSandboxSkillTimeoutSec * 1000)) {
@@ -66,7 +65,7 @@ function Sync-ClaudeSandboxSkill {
                 $timedOut = $false
             }
             $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
-            if (-not $timedOut -and ($p.ExitCode -eq 0 -or $out -match 'not a terminal')) {
+            if (-not $timedOut -and ($p.ExitCode -eq 0 -or $out -match 'prompts are disabled by --no-input')) {
                 Add-Content -Path $added -Value $skill
             } else {
                 if ($out) { Write-Host $out.TrimEnd() }
