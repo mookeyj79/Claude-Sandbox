@@ -112,9 +112,14 @@ _claude_sandbox_main() {
     local added="$HOME/.claude-sandbox-skills-added"
     if [ ! -f "$added" ]; then
         echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" >&2
-        if sbx skills add mookeyj79/Claude-Sandbox </dev/null >/dev/null 2>&1; then
+        # A time limit, so a stuck install can't keep Claude from starting.
+        local limit=""
+        command -v timeout >/dev/null 2>&1 && limit="timeout 120"
+        local out
+        if out=$($limit sbx skills add mookeyj79/Claude-Sandbox </dev/null 2>&1); then
             date > "$added"
         else
+            [ -n "$out" ] && echo "$out" >&2
             echo "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" >&2
         fi
     fi

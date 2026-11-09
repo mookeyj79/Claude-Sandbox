@@ -104,11 +104,27 @@ function claude {
     $added = Join-Path $HOME '.claude-sandbox-skills-added'
     if (-not (Test-Path $added)) {
         Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" -ForegroundColor DarkGray
-        sbx skills add mookeyj79/Claude-Sandbox *> $null
-        if ($LASTEXITCODE -eq 0) {
-            Set-Content -Path $added -Value (Get-Date -Format o)
-        } else {
-            Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" -ForegroundColor Yellow
+        # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
+        # waiting forever behind hidden output, and Claude still starts.
+        $in  = New-TemporaryFile
+        $log = New-TemporaryFile
+        $err = New-TemporaryFile
+        try {
+            $p = Start-Process sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox' -NoNewWindow -PassThru `
+                -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
+            $null = $p.Handle   # without this, ExitCode can come back empty
+            if (-not $p.WaitForExit(120000)) {
+                $p | Stop-Process -Force -ErrorAction SilentlyContinue
+                Write-Host "claude-sandbox: skill install took over 2 minutes, skipped." -ForegroundColor Yellow
+            }
+            if ($p.HasExited -and $p.ExitCode -eq 0) {
+                Set-Content -Path $added -Value (Get-Date -Format o)
+            } else {
+                Get-Content $log, $err | Write-Host
+                Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" -ForegroundColor Yellow
+            }
+        } finally {
+            Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
         }
     }
 
