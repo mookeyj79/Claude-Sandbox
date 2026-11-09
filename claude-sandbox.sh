@@ -108,19 +108,30 @@ _claude_sandbox_sweep() {
 _claude_sandbox_main() {
     export MSYS_NO_PATHCONV=1   # Git Bash: don't rewrite "name:/tmp/..." arguments
 
-    # Install this repo's skills (skills/) once. Retried on the next run if it fails.
+    # Install this repo's skills (skills/) that aren't installed yet, so a skill added to the
+    # repo is picked up after `git pull`. The marker lists the installed skills, one per line.
+    # `sbx skills update` won't do this: it only refreshes skills that are already installed.
+    # Retried on the next run if it fails.
     local added="$HOME/.claude-sandbox-skills-added"
-    if [ ! -f "$added" ]; then
-        echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox" >&2
+    local missing=() skill
+    for skill in "$_CLAUDE_SANDBOX_DIR"/skills/*/; do
+        skill=$(basename "$skill")
+        [ "$skill" = "*" ] && continue
+        grep -qxF "$skill" "$added" 2>/dev/null || missing+=("$skill")
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: ${missing[*]}" >&2
+        local args=()
+        for skill in "${missing[@]}"; do args+=(--skill "$skill"); done
         # A time limit, so a stuck install can't keep Claude from starting.
         local limit=""
         command -v timeout >/dev/null 2>&1 && limit="timeout 120"
         local out
-        if out=$($limit sbx skills add mookeyj79/Claude-Sandbox </dev/null 2>&1); then
-            date > "$added"
+        if out=$($limit sbx skills add mookeyj79/Claude-Sandbox "${args[@]}" </dev/null 2>&1); then
+            printf '%s\n' "${missing[@]}" >> "$added"
         else
             [ -n "$out" ] && echo "$out" >&2
-            echo "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox" >&2
+            echo "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox ${args[*]}" >&2
         fi
     fi
 
