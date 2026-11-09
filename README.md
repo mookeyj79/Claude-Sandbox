@@ -8,7 +8,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Matt Pocock's skills** are preloaded and refreshed daily, plus this repo's own [`/clean-git`](skills/clean-git/SKILL.md).
+- **Matt Pocock's skills** are preloaded and refreshed daily, plus this repo's own [`/clean-git`](skills/clean-git/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md).
 
 | File | Purpose |
 |---|---|
@@ -114,6 +114,7 @@ The wrappers also install this repo's own skills on the first `claude` run (`sbx
 | Skill | What it does |
 |---|---|
 | `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
+| `/update-readme` | Writes or refreshes the project's README as a complete GitHub/GitLab front page: overview, install, usage, configuration, development, license. Checks every command, link and badge against the repo, and leaves the change uncommitted for you to review. |
 
 To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
 
