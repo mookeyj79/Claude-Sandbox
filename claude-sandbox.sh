@@ -120,7 +120,6 @@ _claude_sandbox_main() {
         grep -qxF "$skill" "$added" 2>/dev/null || missing+=("$skill")
     done
     if [ ${#missing[@]} -gt 0 ]; then
-        echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: ${missing[*]}" >&2
         # A time limit, so a stuck install can't keep Claude from starting.
         local limit=""
         command -v timeout >/dev/null 2>&1 && limit="timeout 120"
