@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # Runs INSIDE a freshly created sandbox, before Claude starts. Called by the claude-sandbox wrappers.
-# Usage: bash /tmp/claude-sandbox-setup.sh <model> <effort> <permission-mode>   (empty = leave as is)
+# Usage: bash /tmp/claude-sandbox-setup.sh <model> <effort> <permission-mode>
+# Empty or 'unset' leaves a setting as the sandbox has it. ('unset' because PowerShell can't
+# hold an empty environment variable: setting one to '' deletes it.)
 set -u
 c="$HOME/.claude"
 in=/tmp/claude-hist   # host history staged here by `sbx cp` (files arrive owned by root)
 
 # Restore saved session history so --resume / --continue work.
-# Always create projects/: the wrappers treat failing to copy it out as a failed save.
+# Always create projects/: the wrappers' history save treats a missing one as a failed copy
+# (and keeps the sandbox), so it must exist even before the first session.
 mkdir -p "$c/projects"
 if [ -d "$in/projects" ]; then
     cp -r "$in/projects/." "$c/projects/" 2>/dev/null
@@ -51,7 +54,8 @@ if [ -f /tmp/claude-statusline.sh ]; then
     cp /tmp/claude-statusline.sh "$c/statusline.sh"
     sl="bash $c/statusline.sh"
 fi
-jq --arg m "${1:-}" --arg e "${2:-}" --arg p "${3:-}" --arg sl "$sl" '
+keep() { if [ "$1" != unset ]; then printf '%s' "$1"; fi; }
+jq --arg m "$(keep "${1:-}")" --arg e "$(keep "${2:-}")" --arg p "$(keep "${3:-}")" --arg sl "$sl" '
     (if $m != "" then .model = $m else . end)
   | (if $e != "" then .effortLevel = $e else . end)
   | (if $p != "" then .permissions.defaultMode = $p else . end)

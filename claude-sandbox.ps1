@@ -8,7 +8,7 @@
 #   - Session history is saved on the host and restored into the next sandbox, so --resume works.
 #   - Several windows (same or different folders) each get their own sandbox.
 #
-# Defaults (override per shell, or set to '' to keep the sandbox's own default):
+# Defaults (override per shell, or set to 'unset' to keep the sandbox's own default):
 #   $env:CLAUDE_SANDBOX_MODEL            = 'opus'
 #   $env:CLAUDE_SANDBOX_EFFORT           = 'medium'
 #   $env:CLAUDE_SANDBOX_PERMISSION_MODE  = 'auto'     # or 'bypassPermissions'
@@ -23,24 +23,129 @@
 $script:ClaudeSandboxDir   = $PSScriptRoot
 $script:ClaudeSandboxStore = Join-Path $env:LOCALAPPDATA 'claude-sandbox\history'
 
-function Get-ClaudeSandboxName {
-    param([string]$Path)
-    # Normalize like the bash wrapper does: backslashes, lowercase.
-    $norm = ($Path -replace '/', '\').TrimEnd('\').ToLowerInvariant()
+$script:ClaudeSandboxStateDir      = $HOME   # skill-sync markers; tests point this elsewhere
+$script:ClaudeSandboxSkillTimeoutSec = 120
+
+function Sync-ClaudeSandboxSkill {
+    # Skill sync: make sure every skill in this repo's skills/ is installed in sbx, and refresh
+    # installed skills at most once a day. Never stops Claude from starting: a failed or stuck
+    # install prints how to retry, and the next run tries again.
+    # State in $script:ClaudeSandboxStateDir: .claude-sandbox-skills-added (installed skills, one
+    # per line) and .claude-sandbox-skills-updated (time of the last refresh).
+    param([string]$RepoDir)
+    $added = Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-added'
+    $stamp = Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-updated'
+    $sbx   = (Get-Command sbx -CommandType Application | Select-Object -First 1).Source
+
+    # `sbx skills update` won't install new skills, only refresh installed ones, so a skill
+    # added to the repo by `git pull` is installed here.
+    $have = @(if (Test-Path $added) { Get-Content $added })
+    $missing = @(Get-ChildItem -Directory (Join-Path $RepoDir 'skills') -ErrorAction SilentlyContinue |
+        ForEach-Object Name | Where-Object { $have -notcontains $_ })
+    # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
+    # waiting forever behind hidden output, and Claude still starts.
+    # One skill per call. If the skill is already installed (say, by an earlier manual
+    # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
+    # "stdin is not a terminal". With a single named skill that question is the only one it
+    # can ask, so the skill is there and counts as installed.
+    foreach ($skill in $missing) {
+        $in  = New-TemporaryFile
+        $log = New-TemporaryFile
+        $err = New-TemporaryFile
+        try {
+            $p = Start-Process $sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill -NoNewWindow -PassThru `
+                -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
+            $null = $p.Handle   # without this, ExitCode can come back empty
+            if (-not $p.WaitForExit($script:ClaudeSandboxSkillTimeoutSec * 1000)) {
+                # Whole tree: sbx (or a .cmd shim) may have started children that hold the logs open.
+                try { $p.Kill($true) } catch { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
+                $null = $p.WaitForExit(5000)
+                Write-Host "claude-sandbox: installing skill $skill took over $($script:ClaudeSandboxSkillTimeoutSec)s, skipped." -ForegroundColor Yellow
+                $timedOut = $true
+            } else {
+                $timedOut = $false
+            }
+            $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
+            if (-not $timedOut -and ($p.ExitCode -eq 0 -or $out -match 'not a terminal')) {
+                Add-Content -Path $added -Value $skill
+            } else {
+                if ($out) { Write-Host $out.TrimEnd() }
+                Write-Host "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" -ForegroundColor Yellow
+            }
+        } finally {
+            Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
+        }
+    }
+
+    if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {
+        Set-Content -Path $stamp -Value (Get-Date -Format o)
+        Start-Process $sbx -ArgumentList 'skills', 'update' -WindowStyle Hidden
+    }
+}
+
+# ---- History store ------------------------------------------------------------------------
+# Session history lives on the host, one folder per project, so --resume works across
+# throwaway sandboxes. Callers only need: Get-ClaudeSandboxProjectKey, Get-ClaudeSandboxNewName,
+# Push-ClaudeSandboxHistory, Close-ClaudeSandbox (and Move-ClaudeSandboxLegacyHistory, for now).
+# The sandbox name carries the project key, so a leftover sandbox can be traced to its folder.
+
+function Get-ClaudeSandboxProjectKey {
+    # Project key for a folder: claude-<leaf>-<hash>. Must match the bash wrapper exactly, since
+    # Git Bash and PowerShell share the history store (see tests/project-keys.tsv).
+    param([string]$Path, [switch]$Legacy)
+    $norm = ($Path -replace '/', '\').TrimEnd('\')
+    # Lowercase A-Z only, as Git Bash's `tr` does. Before this matched, PowerShell lowercased
+    # every letter (-Legacy), so a path with non-ASCII capitals got a different key.
+    $norm = if ($Legacy) { $norm.ToLowerInvariant() }
+            else { [regex]::Replace($norm, '[A-Z]', { param($m) $m.Value.ToLowerInvariant() }) }
     $sha  = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($norm))
     $hash = (-join ($sha[0..3] | ForEach-Object { '{0:x2}' -f $_ }))
-    $leaf = (Split-Path $norm -Leaf) -replace '[^a-z0-9-]+', '-'
+    $leaf = $norm.Substring($norm.LastIndexOfAny([char[]]'\/') + 1) -replace '[^a-z0-9-]+', '-'
     $leaf = $leaf.Trim('-')
     if ($leaf.Length -gt 24) { $leaf = $leaf.Substring(0, 24).TrimEnd('-') }
     if (-not $leaf) { $leaf = 'root' }
     "claude-$leaf-$hash"
 }
 
+function Move-ClaudeSandboxLegacyHistory {
+    # One-time move of a project's history saved under its -Legacy key (see
+    # Get-ClaudeSandboxProjectKey), so --resume still finds it. Only when the new folder doesn't
+    # exist yet; otherwise both are left alone.
+    param([string]$Path)
+    $new = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProjectKey $Path)
+    $old = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProjectKey $Path -Legacy)
+    if ($old -ne $new -and (Test-Path $old) -and -not (Test-Path $new)) {
+        Move-Item $old $new -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-ClaudeSandboxNewName {
+    # A fresh sandbox name for a project: <key>-<4 random chars>, so several windows can share a folder.
+    param([string]$Key)
+    "$Key-" + (-join ((48..57) + (97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ }))
+}
+
+function Get-ClaudeSandboxProject {
+    # The project key a sandbox belongs to, or $null if the sandbox isn't one of ours.
+    # (Names without the random part come from older versions of the wrappers.)
+    param([string]$Sandbox)
+    if ($Sandbox -cmatch '^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$') { $Matches[1] } else { $null }
+}
+
+function Push-ClaudeSandboxHistory {
+    # Copy the project's saved history into a new sandbox, where sandbox-setup.sh restores it.
+    param([string]$Sandbox)
+    $store = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProject $Sandbox)
+    New-Item -ItemType Directory -Force -Path $store | Out-Null
+    & sbx cp $store "${Sandbox}:/tmp/claude-hist" *> $null
+}
+
 function Save-ClaudeSandboxHistory {
-    # Copy a sandbox's session history into the host store for its project.
-    # Returns $false if anything went wrong, in which case the sandbox must not be deleted.
-    param([string]$Sandbox, [string]$Base)
-    $store = Join-Path $script:ClaudeSandboxStore $Base
+    # Copy a sandbox's session history into the store for its project. Returns $false if anything
+    # went wrong. A missing projects/ folder counts as a failure: sandbox-setup.sh always creates
+    # it, so missing means the copy didn't work.
+    param([string]$Sandbox)
+    $store = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProject $Sandbox)
     $tmp   = Join-Path ([IO.Path]::GetTempPath()) "claude-sandbox-$Sandbox"
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $tmp, (Join-Path $store 'projects') | Out-Null
@@ -66,26 +171,27 @@ function Save-ClaudeSandboxHistory {
     return $ok
 }
 
-function Write-ClaudeSandboxKeptWarning {
+function Close-ClaudeSandbox {
+    # Close a sandbox: save its history, then delete it. If the save fails the sandbox is kept,
+    # stopped, so the next run's sweep retries it; nothing is lost. Returns $true if deleted.
     param([string]$Sandbox)
+    if (Save-ClaudeSandboxHistory $Sandbox) {
+        & sbx rm --force $Sandbox *> $null
+        return $true
+    }
+    & sbx stop $Sandbox *> $null
     Write-Host "claude-sandbox: WARNING: couldn't save history from $Sandbox, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $Sandbox" -ForegroundColor Yellow
+    return $false
 }
 
 function Invoke-ClaudeSandboxSweep {
-    # Sandboxes left behind (window closed with X, crash): save their history, then delete them.
-    # A sandbox whose save fails stays stopped, so the next run retries it.
+    # Sweep: close sandboxes left behind (window closed with X, crash).
     # Only *stopped* ones are touched; a running one may belong to another open window.
     $list = & sbx ls --json 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue
     foreach ($s in @($list)) {
-        if ($s.status -ne 'stopped') { continue }
-        if ($s.name -match '^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$') {
-            Write-Host "claude-sandbox: cleaning up leftover sandbox $($s.name)" -ForegroundColor DarkGray
-            if (Save-ClaudeSandboxHistory $s.name $Matches[1]) {
-                & sbx rm --force $s.name *> $null
-            } else {
-                Write-ClaudeSandboxKeptWarning $s.name
-            }
-        }
+        if ($s.status -ne 'stopped' -or -not (Get-ClaudeSandboxProject $s.name)) { continue }
+        Write-Host "claude-sandbox: cleaning up leftover sandbox $($s.name)" -ForegroundColor DarkGray
+        $null = Close-ClaudeSandbox $s.name
     }
 }
 
@@ -100,60 +206,12 @@ function claude {
         return
     }
 
-    # Install this repo's skills (skills/) that aren't installed yet, so a skill added to the
-    # repo is picked up after `git pull`. The marker lists the installed skills, one per line.
-    # `sbx skills update` won't do this: it only refreshes skills that are already installed.
-    # Retried on the next run if it fails.
-    $added = Join-Path $HOME '.claude-sandbox-skills-added'
-    $have = @(if (Test-Path $added) { Get-Content $added })
-    $missing = @(Get-ChildItem -Directory (Join-Path $script:ClaudeSandboxDir 'skills') -ErrorAction SilentlyContinue |
-        ForEach-Object Name | Where-Object { $have -notcontains $_ })
-    if ($missing.Count -gt 0) {
-        # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
-        # waiting forever behind hidden output, and Claude still starts.
-        # One skill per call. If the skill is already installed (say, by an earlier manual
-        # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
-        # "stdin is not a terminal". With a single named skill that question is the only one it
-        # can ask, so the skill is there and counts as installed.
-        foreach ($skill in $missing) {
-            $in  = New-TemporaryFile
-            $log = New-TemporaryFile
-            $err = New-TemporaryFile
-            try {
-                $p = Start-Process sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill -NoNewWindow -PassThru `
-                    -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
-                $null = $p.Handle   # without this, ExitCode can come back empty
-                if (-not $p.WaitForExit(120000)) {
-                    $p | Stop-Process -Force -ErrorAction SilentlyContinue
-                    Write-Host "claude-sandbox: installing skill $skill took over 2 minutes, skipped." -ForegroundColor Yellow
-                }
-                $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
-                if ($p.HasExited -and ($p.ExitCode -eq 0 -or $out -match 'not a terminal')) {
-                    Add-Content -Path $added -Value $skill
-                } else {
-                    if ($out) { Write-Host $out.TrimEnd() }
-                    Write-Host "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" -ForegroundColor Yellow
-                }
-            } finally {
-                Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    # Refresh skills added with `sbx skills add` at most once a day, in the background.
-    $stamp = Join-Path $HOME '.claude-sandbox-skills-updated'
-    if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {
-        Set-Content -Path $stamp -Value (Get-Date -Format o)
-        Start-Process sbx -ArgumentList 'skills', 'update' -WindowStyle Hidden
-    }
-
+    Sync-ClaudeSandboxSkill $script:ClaudeSandboxDir
     Invoke-ClaudeSandboxSweep
 
-    $path  = (Get-Location).ProviderPath
-    $base  = Get-ClaudeSandboxName $path
-    $name  = "$base-" + (-join ((48..57) + (97..122) | Get-Random -Count 4 | ForEach-Object { [char]$_ }))
-    $store = Join-Path $script:ClaudeSandboxStore $base
-    New-Item -ItemType Directory -Force -Path $store | Out-Null
+    $path = (Get-Location).ProviderPath
+    Move-ClaudeSandboxLegacyHistory $path
+    $name = Get-ClaudeSandboxNewName (Get-ClaudeSandboxProjectKey $path)
 
     $model  = if ($null -ne $env:CLAUDE_SANDBOX_MODEL)           { $env:CLAUDE_SANDBOX_MODEL }           else { 'opus' }
     $effort = if ($null -ne $env:CLAUDE_SANDBOX_EFFORT)          { $env:CLAUDE_SANDBOX_EFFORT }          else { 'medium' }
@@ -179,7 +237,7 @@ function claude {
     if ($LASTEXITCODE -ne 0) { $out | Write-Host; return }
 
     try {
-        & sbx cp $store "${name}:/tmp/claude-hist" *> $null
+        Push-ClaudeSandboxHistory $name
         & sbx cp (Join-Path $script:ClaudeSandboxDir 'sandbox-setup.sh') "${name}:/tmp/claude-sandbox-setup.sh" *> $null
         & sbx cp (Join-Path $script:ClaudeSandboxDir 'statusline.sh') "${name}:/tmp/claude-statusline.sh" *> $null
         & sbx exec $name bash /tmp/claude-sandbox-setup.sh $model $effort $mode
@@ -191,12 +249,6 @@ function claude {
     }
     finally {
         Write-Host "claude-sandbox: saving history and removing $name" -ForegroundColor DarkGray
-        if (Save-ClaudeSandboxHistory $name $base) {
-            & sbx rm --force $name *> $null
-        } else {
-            # Stopped, not left running: the sweep only retries stopped sandboxes.
-            & sbx stop $name *> $null
-            Write-ClaudeSandboxKeptWarning $name
-        }
+        $null = Close-ClaudeSandbox $name
     }
 }
