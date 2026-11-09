@@ -121,18 +121,23 @@ _claude_sandbox_main() {
     done
     if [ ${#missing[@]} -gt 0 ]; then
         echo "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: ${missing[*]}" >&2
-        local args=()
-        for skill in "${missing[@]}"; do args+=(--skill "$skill"); done
         # A time limit, so a stuck install can't keep Claude from starting.
         local limit=""
         command -v timeout >/dev/null 2>&1 && limit="timeout 120"
         local out
-        if out=$($limit sbx skills add mookeyj79/Claude-Sandbox "${args[@]}" </dev/null 2>&1); then
-            printf '%s\n' "${missing[@]}" >> "$added"
-        else
-            [ -n "$out" ] && echo "$out" >&2
-            echo "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox ${args[*]}" >&2
-        fi
+        # One skill per call. If the skill is already installed (say, by an earlier manual
+        # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
+        # "stdin is not a terminal". With a single named skill that question is the only one it
+        # can ask, so the skill is there and counts as installed.
+        for skill in "${missing[@]}"; do
+            if out=$($limit sbx skills add mookeyj79/Claude-Sandbox --skill "$skill" </dev/null 2>&1) ||
+               [[ "$out" == *"not a terminal"* ]]; then
+                echo "$skill" >> "$added"
+            else
+                [ -n "$out" ] && echo "$out" >&2
+                echo "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" >&2
+            fi
+        done
     fi
 
     # Refresh skills added with `sbx skills add` at most once a day, in the background.

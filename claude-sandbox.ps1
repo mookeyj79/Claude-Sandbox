@@ -109,29 +109,35 @@ function claude {
     $missing = @(Get-ChildItem -Directory (Join-Path $script:ClaudeSandboxDir 'skills') -ErrorAction SilentlyContinue |
         ForEach-Object Name | Where-Object { $have -notcontains $_ })
     if ($missing.Count -gt 0) {
-        $skillArgs = @($missing | ForEach-Object { '--skill', $_ })
         Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: $($missing -join ' ')" -ForegroundColor DarkGray
         # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
         # waiting forever behind hidden output, and Claude still starts.
-        $in  = New-TemporaryFile
-        $log = New-TemporaryFile
-        $err = New-TemporaryFile
-        try {
-            $p = Start-Process sbx -ArgumentList (@('skills', 'add', 'mookeyj79/Claude-Sandbox') + $skillArgs) -NoNewWindow -PassThru `
-                -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
-            $null = $p.Handle   # without this, ExitCode can come back empty
-            if (-not $p.WaitForExit(120000)) {
-                $p | Stop-Process -Force -ErrorAction SilentlyContinue
-                Write-Host "claude-sandbox: skill install took over 2 minutes, skipped." -ForegroundColor Yellow
+        # One skill per call. If the skill is already installed (say, by an earlier manual
+        # `sbx skills add`), sbx asks "Overwrite?" and, with no terminal to answer, fails with
+        # "stdin is not a terminal". With a single named skill that question is the only one it
+        # can ask, so the skill is there and counts as installed.
+        foreach ($skill in $missing) {
+            $in  = New-TemporaryFile
+            $log = New-TemporaryFile
+            $err = New-TemporaryFile
+            try {
+                $p = Start-Process sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill -NoNewWindow -PassThru `
+                    -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
+                $null = $p.Handle   # without this, ExitCode can come back empty
+                if (-not $p.WaitForExit(120000)) {
+                    $p | Stop-Process -Force -ErrorAction SilentlyContinue
+                    Write-Host "claude-sandbox: installing skill $skill took over 2 minutes, skipped." -ForegroundColor Yellow
+                }
+                $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
+                if ($p.HasExited -and ($p.ExitCode -eq 0 -or $out -match 'not a terminal')) {
+                    Add-Content -Path $added -Value $skill
+                } else {
+                    if ($out) { Write-Host $out.TrimEnd() }
+                    Write-Host "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" -ForegroundColor Yellow
+                }
+            } finally {
+                Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
             }
-            if ($p.HasExited -and $p.ExitCode -eq 0) {
-                Add-Content -Path $added -Value $missing
-            } else {
-                Get-Content $log, $err | Write-Host
-                Write-Host "claude-sandbox: couldn't install skills, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox $($skillArgs -join ' ')" -ForegroundColor Yellow
-            }
-        } finally {
-            Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
         }
     }
 
