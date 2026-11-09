@@ -115,7 +115,7 @@ This installs every skill in the repo, including drafts that the Claude plugin l
 sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
 ```
 
-The wrappers also install this repo's own skills (`sbx skills add mookeyj79/Claude-Sandbox`) the first time you run `claude`, and install any new skill on the next run after a `git pull`. There's nothing to do for these:
+The wrappers also install this repo's own skills (`sbx skills add mookeyj79/Claude-Sandbox`) the first time you run `claude`, and install any new skill on the next run after a `git pull`. This happens silently. If an install fails, you'll see a message and it's retried on the next run. There's nothing to do for these:
 
 | Skill | What it does |
 |---|---|
@@ -265,6 +265,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
 | `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and upgrade if it's older (`winget upgrade Docker.sbx` on Windows). |
 | `couldn't save history from <name>` | The sandbox was kept so its sessions aren't lost, and each `claude` run retries the save. If it keeps failing and you don't need those sessions, run `sbx rm --force <name>`. |
+| `couldn't install skill <name>, will retry next run` | Claude still starts without that skill, and the next run tries again. To install it now, run the `sbx skills add ...` command printed in the message. If it keeps failing, check `sbx login` and that GitHub is reachable. |
 | `--resume` shows no sessions | Check that the history store has a folder for this project and that `sandbox-setup.sh` is next to the wrapper. |
 | Anything else | `sbx diagnose`. As a last resort, `sbx reset` deletes all sandboxes **and your stored login**. Saved history isn't affected. |
 
