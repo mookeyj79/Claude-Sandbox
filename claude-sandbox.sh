@@ -70,7 +70,8 @@ _claude_sandbox_project_key() {
 
 # A fresh sandbox name for a project: <key>-<4 random chars>, so several windows can share a folder.
 _claude_sandbox_new_name() {
-    printf '%s-%s' "$1" "$(LC_ALL=C tr -dc 'a-z0-9' </dev/urandom | head -c 4)"
+    # Bounded read: with SIGPIPE ignored, `tr </dev/urandom | head` never ends (BSD tr).
+    printf '%s-%s' "$1" "$(head -c 512 /dev/urandom | LC_ALL=C tr -dc 'a-z0-9' | head -c 4)"
 }
 
 # The project key a sandbox belongs to; fails if the sandbox isn't one of ours.

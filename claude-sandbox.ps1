@@ -213,9 +213,12 @@ function claude {
     Move-ClaudeSandboxLegacyHistory $path
     $name = Get-ClaudeSandboxNewName (Get-ClaudeSandboxProjectKey $path)
 
-    $model  = if ($null -ne $env:CLAUDE_SANDBOX_MODEL)           { $env:CLAUDE_SANDBOX_MODEL }           else { 'opus' }
-    $effort = if ($null -ne $env:CLAUDE_SANDBOX_EFFORT)          { $env:CLAUDE_SANDBOX_EFFORT }          else { 'medium' }
-    $mode   = if ($null -ne $env:CLAUDE_SANDBOX_PERMISSION_MODE) { $env:CLAUDE_SANDBOX_PERMISSION_MODE } else { 'auto' }
+    # Unset: the default. Set but empty (PowerShell 7.5+ can hold that): 'unset', meaning leave
+    # the sandbox's own setting. Never pass '' itself: PowerShell drops empty arguments to
+    # native commands, which would shift the rest along.
+    $model  = if ($null -eq $env:CLAUDE_SANDBOX_MODEL)           { 'opus' }   elseif ($env:CLAUDE_SANDBOX_MODEL)           { $env:CLAUDE_SANDBOX_MODEL }           else { 'unset' }
+    $effort = if ($null -eq $env:CLAUDE_SANDBOX_EFFORT)          { 'medium' } elseif ($env:CLAUDE_SANDBOX_EFFORT)          { $env:CLAUDE_SANDBOX_EFFORT }          else { 'unset' }
+    $mode   = if ($null -eq $env:CLAUDE_SANDBOX_PERMISSION_MODE) { 'auto' }   elseif ($env:CLAUDE_SANDBOX_PERMISSION_MODE) { $env:CLAUDE_SANDBOX_PERMISSION_MODE } else { 'unset' }
 
     # Read-only views of earlier sessions. sandbox-setup.sh tells Claude where they are.
     $mounts = @()

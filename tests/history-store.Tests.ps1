@@ -50,21 +50,29 @@ Describe 'History store' {
     }
 
     It "pushes the project's store into the sandbox" {
+        Write-Host "DIAG store=$store wrapperStore=$($script:ClaudeSandboxStore) key=$key"
         New-Item -ItemType Directory -Force (Join-Path $store "$key/projects/p") | Out-Null
         Set-Content -NoNewline (Join-Path $store "$key/projects/p/s1.jsonl") 's1'
         New-FakeSandbox $box running
+        Get-ChildItem -Recurse $root | ForEach-Object { Write-Host "DIAG before: $($_.FullName)" }
         Push-ClaudeSandboxHistory $box
+        Get-SbxCall | ForEach-Object { Write-Host "DIAG call: $_" }
+        Get-ChildItem -Recurse $root | ForEach-Object { Write-Host "DIAG after: $($_.FullName)" }
         Get-Content -Raw (Join-Path $boxes "$box/fs/tmp/claude-hist/projects/p/s1.jsonl") | Should -Be 's1'
     }
 
     It 'merges sessions and copies prompt history on save' {
+        Write-Host "DIAG store=$store wrapperStore=$($script:ClaudeSandboxStore) key=$key"
         New-Item -ItemType Directory -Force (Join-Path $store "$key/projects/p") | Out-Null
         Set-Content -NoNewline (Join-Path $store "$key/projects/p/s0.jsonl") 'old'
         New-FakeSandbox $box stopped
         Set-FakeSandboxFile $box /home/agent/.claude/projects/p/s1.jsonl 'new'
         Set-FakeSandboxFile $box /home/agent/.claude/projects/lost+found/junk 'x'
         Set-FakeSandboxFile $box /home/agent/.claude/history.jsonl 'prompts'
+        Get-ChildItem -Recurse $root | ForEach-Object { Write-Host "DIAG before: $($_.FullName)" }
         Save-ClaudeSandboxHistory $box | Should -BeTrue
+        Get-SbxCall | ForEach-Object { Write-Host "DIAG call: $_" }
+        Get-ChildItem -Recurse $root | ForEach-Object { Write-Host "DIAG after: $($_.FullName)" }
         Get-Content -Raw (Join-Path $store "$key/projects/p/s0.jsonl") | Should -Be 'old'
         Get-Content -Raw (Join-Path $store "$key/projects/p/s1.jsonl") | Should -Be 'new'
         Join-Path $store "$key/projects/lost+found" | Should -Not -Exist

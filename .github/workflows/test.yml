@@ -16,6 +16,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]   # macOS: no timeout(1), bash 3.2
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Install bats
@@ -26,6 +27,7 @@ jobs:
 
   powershell:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Pester

@@ -45,8 +45,10 @@ Describe 'claude' {
         $env:CLAUDE_SANDBOX_EFFORT = ''
         $env:CLAUDE_SANDBOX_PERMISSION_MODE = 'bypassPermissions'
         claude 6>$null
-        # PowerShell can't pass an empty env var (setting '' removes it), so effort falls back.
-        Get-SbxCall | Where-Object { $_ -like 'exec *setup.sh*' } | Should -BeLike '*setup.sh sonnet * bypassPermissions'
+        # Setting '' deletes the variable before PowerShell 7.5 (effort: medium) and keeps it
+        # empty from 7.5 on (effort: unset). Either way three arguments arrive, in order.
+        Get-SbxCall | Where-Object { $_ -like 'exec *setup.sh*' } |
+            Should -Match 'setup\.sh sonnet (medium|unset) bypassPermissions$'
     }
 
     It 'mounts earlier sessions read-only unless turned off' {
