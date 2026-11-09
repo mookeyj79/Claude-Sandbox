@@ -109,7 +109,6 @@ function claude {
     $missing = @(Get-ChildItem -Directory (Join-Path $script:ClaudeSandboxDir 'skills') -ErrorAction SilentlyContinue |
         ForEach-Object Name | Where-Object { $have -notcontains $_ })
     if ($missing.Count -gt 0) {
-        Write-Host "claude-sandbox: installing skills from mookeyj79/Claude-Sandbox: $($missing -join ' ')" -ForegroundColor DarkGray
         # Empty stdin and a time limit: if sbx asks a question, it gets no answer instead of
         # waiting forever behind hidden output, and Claude still starts.
         # One skill per call. If the skill is already installed (say, by an earlier manual
