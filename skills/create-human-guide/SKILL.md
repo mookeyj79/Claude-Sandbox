@@ -1,6 +1,6 @@
 ---
 name: create-human-guide
-description: Write a step-by-step guide, with copy-paste commands, for the open `ready-for-human` issues: the tasks an agent can't do and you have to do yourself.
+description: "Write a step-by-step guide, with copy-paste commands, for the open `ready-for-human` issues: the tasks an agent can't do and you have to do yourself."
 disable-model-invocation: true
 argument-hint: "[output path, default human-guide.md] [issue numbers to limit to]"
 ---
