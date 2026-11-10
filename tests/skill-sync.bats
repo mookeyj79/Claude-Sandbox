@@ -17,22 +17,22 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     run _claude_sandbox_sync_skills "$repo"
     [ "$status" -eq 0 ]
     [ "$output" = "" ]
-    [ "$(installed)" = $'alpha\nbeta' ]
-    [ "$(sbx_calls)" = $'skills add mookeyj79/Claude-Sandbox --skill alpha --no-input\nskills add mookeyj79/Claude-Sandbox --skill beta --no-input' ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+    [ "$(sbx_calls)" = $'skills add mookeyj79/Claude-Sandbox --skill alpha --no-input\nskills add mookeyj79/Claude-Sandbox --skill beta --no-input\nskills add mattpocock/skills --no-input' ]
 }
 
 @test "skips skills already recorded" {
-    echo alpha > "$HOME/.claude-sandbox-skills-added"
+    printf '%s\n' alpha mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
     _claude_sandbox_sync_skills "$repo"
     [ "$(sbx_calls)" = "skills add mookeyj79/Claude-Sandbox --skill beta --no-input" ]
-    [ "$(installed)" = $'alpha\nbeta' ]
+    [ "$(installed)" = $'alpha\nmattpocock/skills\nbeta' ]
 }
 
 @test "a skill that's already installed counts as installed" {
     echo exists > "$FAKE_SBX_DIR/skill-alpha"
     run _claude_sandbox_sync_skills "$repo"
     [ "$output" = "" ]
-    [ "$(installed)" = $'alpha\nbeta' ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
 }
 
 @test "a failed install is reported, not recorded, and retried next run" {
@@ -41,11 +41,11 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     [ "$status" -eq 0 ]
     [[ "$output" == *"network error"* ]]
     [[ "$output" == *"couldn't install skill alpha, will retry next run"* ]]
-    [ "$(installed)" = "beta" ]
+    [ "$(installed)" = $'beta\nmattpocock/skills' ]
 
     rm "$FAKE_SBX_DIR/skill-alpha"
     _claude_sandbox_sync_skills "$repo"
-    [ "$(installed)" = $'beta\nalpha' ]
+    [ "$(installed)" = $'beta\nmattpocock/skills\nalpha' ]
 }
 
 @test "a stuck install is cut off by the time limit, even without timeout(1)" {
@@ -58,18 +58,43 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     [ "$SECONDS" -lt 10 ]
     [[ "$output" == *"installing skill alpha took over 1s, skipped."* ]]
     [[ "$output" == *"couldn't install skill alpha"* ]]
-    [ "$(installed)" = "beta" ]
+    [ "$(installed)" = $'beta\nmattpocock/skills' ]
 }
 
-@test "no repo skills: nothing to install" {
+@test "no repo skills: only the skill repos are installed" {
     rm -r "$repo/skills"/*
     run _claude_sandbox_sync_skills "$repo"
     [ "$output" = "" ]
-    [ "$(sbx_calls)" = "" ]
+    [ "$(sbx_calls)" = "skills add mattpocock/skills --no-input" ]
+}
+
+@test "installs mattpocock/skills once, whole" {
+    printf '%s\n' alpha beta > "$HOME/.claude-sandbox-skills-added"
+    _claude_sandbox_sync_skills "$repo"
+    [ "$(sbx_calls)" = "skills add mattpocock/skills --no-input" ]
+    _claude_sandbox_sync_skills "$repo"
+    [ "$(sbx_calls)" = "skills add mattpocock/skills --no-input" ]
+}
+
+@test "mattpocock/skills already added by hand counts as installed" {
+    printf '%s\n' alpha beta > "$HOME/.claude-sandbox-skills-added"
+    echo exists > "$FAKE_SBX_DIR/skill-mattpocock__skills"
+    run _claude_sandbox_sync_skills "$repo"
+    [ "$output" = "" ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+}
+
+@test "a failed mattpocock/skills install is reported with the retry command" {
+    printf '%s\n' alpha beta > "$HOME/.claude-sandbox-skills-added"
+    echo fail > "$FAKE_SBX_DIR/skill-mattpocock__skills"
+    run _claude_sandbox_sync_skills "$repo"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"couldn't install skill mattpocock/skills, will retry next run. To try now: sbx skills add mattpocock/skills"* ]]
+    [ "$(installed)" = $'alpha\nbeta' ]
 }
 
 @test "refreshes installed skills when the last refresh is over a day old" {
-    echo alpha > "$HOME/.claude-sandbox-skills-added"; echo beta >> "$HOME/.claude-sandbox-skills-added"
+    printf '%s\n' alpha beta mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
     touch -t 202001010000 "$HOME/.claude-sandbox-skills-updated"
     _claude_sandbox_sync_skills "$repo"
     # The refresh runs in the background.
@@ -79,7 +104,7 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
 }
 
 @test "doesn't refresh twice in a day" {
-    echo alpha > "$HOME/.claude-sandbox-skills-added"; echo beta >> "$HOME/.claude-sandbox-skills-added"
+    printf '%s\n' alpha beta mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
     _claude_sandbox_sync_skills "$repo"
     sleep 0.5
     [ "$(sbx_calls)" = "" ]

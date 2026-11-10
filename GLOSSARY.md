@@ -36,5 +36,5 @@ _Avoid_: orphan, stale sandbox
 Closing every leftover sandbox at the start of a launch.
 
 **Skill sync**:
-Making sure every skill in this repo is installed in sbx, and refreshing installed skills at most once a day.
+Making sure every skill in this repo, and every skill repo the wrappers list (`mattpocock/skills`), is installed in sbx once, and refreshing installed skills at most once a day.
 _Avoid_: skill install, skill update

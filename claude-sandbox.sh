@@ -162,15 +162,20 @@ _claude_sandbox_with_limit() {
     return "$rc"
 }
 
-# Skill sync: make sure every skill in this repo's skills/ is installed in sbx, and refresh
-# installed skills at most once a day. Never stops Claude from starting: a failed or stuck
-# install prints how to retry, and the next run tries again.
+# Skill repos every sandbox gets in full, besides this repo's own skills/. Each is installed
+# once; after that the daily `sbx skills update` keeps it current.
+_CLAUDE_SANDBOX_SKILL_REPOS=(mattpocock/skills)
+
+# Skill sync: make sure every skill in this repo's skills/, and every repo in
+# _CLAUDE_SANDBOX_SKILL_REPOS, is installed in sbx, and refresh installed skills at most once a
+# day. Never stops Claude from starting: a failed or stuck install prints how to retry, and the
+# next run tries again.
 #   $1  folder holding skills/ (this repo)
-# State in $HOME: .claude-sandbox-skills-added (installed skills, one per line) and
-# .claude-sandbox-skills-updated (time of the last refresh).
+# State in $HOME: .claude-sandbox-skills-added (installed skills and skill repos, one per line)
+# and .claude-sandbox-skills-updated (time of the last refresh).
 _claude_sandbox_sync_skills() {
     local repo="$1" added="$HOME/.claude-sandbox-skills-added" stamp="$HOME/.claude-sandbox-skills-updated"
-    local limit="${_CLAUDE_SANDBOX_SKILL_TIMEOUT:-120}" skill out rc
+    local skill src
 
     # `sbx skills update` won't install new skills, only refresh installed ones, so a skill
     # added to the repo by `git pull` is installed here.
@@ -178,24 +183,36 @@ _claude_sandbox_sync_skills() {
         skill=$(basename "$skill")
         [ "$skill" = "*" ] && continue
         grep -qxF "$skill" "$added" 2>/dev/null && continue
-        # One skill per call, with --no-input. If the skill is already installed (say, by an
-        # earlier manual `sbx skills add`), sbx would ask before overwriting it; --no-input makes
-        # it fail with "prompts are disabled by --no-input" instead. For a single named skill
-        # that's the only question it can ask, so the skill is there and counts as installed.
-        out=$(_claude_sandbox_with_limit "$limit" sbx skills add mookeyj79/Claude-Sandbox --skill "$skill" --no-input </dev/null 2>&1)
-        rc=$?
-        if [ "$rc" -eq 0 ] || [[ "$out" == *"prompts are disabled by --no-input"* ]]; then
-            echo "$skill" >> "$added"
-        else
-            [ "$rc" -eq 143 ] && echo "claude-sandbox: installing skill $skill took over ${limit}s, skipped." >&2
-            [ -n "$out" ] && echo "$out" >&2
-            echo "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" >&2
-        fi
+        _claude_sandbox_add_skill "$added" "$skill" mookeyj79/Claude-Sandbox --skill "$skill"
+    done
+    for src in "${_CLAUDE_SANDBOX_SKILL_REPOS[@]}"; do
+        grep -qxF "$src" "$added" 2>/dev/null && continue
+        _claude_sandbox_add_skill "$added" "$src" "$src"
     done
 
     if [ -z "$(find "$stamp" -mmin -1440 2>/dev/null)" ]; then
         date > "$stamp"
         (sbx skills update </dev/null >/dev/null 2>&1 &)
+    fi
+}
+
+# One `sbx skills add`, recorded in the added file if it worked.
+#   $1  added file   $2  name to record and report   $3...  arguments after `sbx skills add`
+# Runs with --no-input. If the skill is already installed (say, by an earlier manual
+# `sbx skills add`), sbx would ask before overwriting it; --no-input makes it fail with
+# "prompts are disabled by --no-input" instead. That's the only question it asks, so the skill
+# is there and counts as installed.
+_claude_sandbox_add_skill() {
+    local added="$1" what="$2" limit="${_CLAUDE_SANDBOX_SKILL_TIMEOUT:-120}" out rc
+    shift 2
+    out=$(_claude_sandbox_with_limit "$limit" sbx skills add "$@" --no-input </dev/null 2>&1)
+    rc=$?
+    if [ "$rc" -eq 0 ] || [[ "$out" == *"prompts are disabled by --no-input"* ]]; then
+        echo "$what" >> "$added"
+    else
+        [ "$rc" -eq 143 ] && echo "claude-sandbox: installing skill $what took over ${limit}s, skipped." >&2
+        [ -n "$out" ] && echo "$out" >&2
+        echo "claude-sandbox: couldn't install skill $what, will retry next run. To try now: sbx skills add $*" >&2
     fi
 }
 

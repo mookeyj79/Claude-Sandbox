@@ -6,7 +6,8 @@ load helpers
 setup() {
     setup_fake_sbx
     # Skill sync is covered in skill-sync.bats; keep it quiet here.
-    for s in "$REPO_ROOT"/skills/*/; do basename "$s"; done > "$HOME/.claude-sandbox-skills-added"
+    { for s in "$REPO_ROOT"/skills/*/; do basename "$s"; done
+      printf '%s\n' "${_CLAUDE_SANDBOX_SKILL_REPOS[@]}"; } > "$HOME/.claude-sandbox-skills-added"
     date > "$HOME/.claude-sandbox-skills-updated"
     project="$BATS_TEST_TMPDIR/My Project"
     mkdir -p "$project"
