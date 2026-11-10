@@ -145,7 +145,7 @@ sbx policy init balanced
 
 Allow a host with `sbx policy allow network example.com`. See blocked requests waiting for approval with `sbx policy approval ls`. Undo the preset with `sbx policy reset`.
 
-Doing a lot of web research? [NETWORK-POLICY.md](NETWORK-POLICY.md) shows how to allow public websites while blocking private networks.
+Doing a lot of web research, or need Claude to reach a service on your machine? [NETWORK-POLICY.md](NETWORK-POLICY.md) shows how to allow public websites and your machine's localhost while blocking the rest of your local network.
 
 ### 5. GitHub access
 
