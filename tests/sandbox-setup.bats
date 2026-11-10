@@ -32,3 +32,34 @@ setting() { jq -r "$1" "$HOME/.claude/settings.json"; }
     bash "$REPO_ROOT/sandbox-setup.sh" unset unset default 2>/dev/null
     [ "$(setting .permissions.defaultMode)" = default ]
 }
+
+@test "drops the image's second copy of the shell-completions warning" {
+    cat > "$HOME/.claude/CLAUDE.md" <<'MD'
+<!-- sbx:guidance start -->
+## Critical: Shell Completions Must NOT Be in the Persistent Environment File
+first copy
+## Environment Persistence
+kept
+### Shell Completions Must NOT Be in CLAUDE_ENV_FILE
+second copy
+#### WRONG - Will Break Bash
+```bash
+# DO NOT ADD THESE
+```
+dropped too
+<!-- sbx:guidance end -->
+MD
+    bash "$REPO_ROOT/sandbox-setup.sh" unset unset unset 2>/dev/null
+    run cat "$HOME/.claude/CLAUDE.md"
+    [[ "$output" == *"first copy"* ]]
+    [[ "$output" == *"kept"* ]]
+    [[ "$output" != *"second copy"* ]]
+    [[ "$output" != *"dropped too"* ]]
+    [[ "$output" == *"<!-- sbx:guidance end -->"* ]]
+}
+
+@test "keeps the CLAUDE_ENV_FILE warning when it's the only copy" {
+    printf '%s\n' '### Shell Completions Must NOT Be in CLAUDE_ENV_FILE' 'only copy' > "$HOME/.claude/CLAUDE.md"
+    bash "$REPO_ROOT/sandbox-setup.sh" unset unset unset 2>/dev/null
+    grep -q 'only copy' "$HOME/.claude/CLAUDE.md"
+}

@@ -21,6 +21,9 @@
 #   $env:CLAUDE_NO_SANDBOX = '1'    make `claude` use the host for this shell session
 
 $script:ClaudeSandboxDir   = $PSScriptRoot
+# Prefix for the lines users paste back when something goes wrong. `claude` adds the wrapper's
+# commit, so a stale checkout shows at a glance.
+$script:ClaudeSandboxTag   = 'claude-sandbox'
 $script:ClaudeSandboxStore = Join-Path $env:LOCALAPPDATA 'claude-sandbox\history'
 
 $script:ClaudeSandboxStateDir      = $HOME   # skill-sync markers; tests point this elsewhere
@@ -79,7 +82,7 @@ function Add-ClaudeSandboxSkill {
             # Whole tree: sbx (or a .cmd shim) may have started children that hold the logs open.
             try { $p.Kill($true) } catch { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
             $null = $p.WaitForExit(5000)
-            Write-Host "claude-sandbox: installing skill $What took over $($script:ClaudeSandboxSkillTimeoutSec)s, skipped." -ForegroundColor Yellow
+            Write-Host "$($script:ClaudeSandboxTag): installing skill $What took over $($script:ClaudeSandboxSkillTimeoutSec)s, skipped." -ForegroundColor Yellow
             $timedOut = $true
         } else {
             $timedOut = $false
@@ -89,7 +92,7 @@ function Add-ClaudeSandboxSkill {
             Add-Content -Path $Added -Value $What
         } else {
             if ($out) { Write-Host $out.TrimEnd() }
-            Write-Host "claude-sandbox: couldn't install skill $What, will retry next run. To try now: sbx skills add $($SbxArgs -join ' ')" -ForegroundColor Yellow
+            Write-Host "$($script:ClaudeSandboxTag): couldn't install skill $What, will retry next run. To try now: sbx skills add $($SbxArgs -join ' ')" -ForegroundColor Yellow
         }
     } finally {
         Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
@@ -193,7 +196,7 @@ function Close-ClaudeSandbox {
         return $true
     }
     & sbx stop $Sandbox *> $null
-    Write-Host "claude-sandbox: WARNING: couldn't save history from $Sandbox, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $Sandbox" -ForegroundColor Yellow
+    Write-Host "$($script:ClaudeSandboxTag): WARNING: couldn't save history from $Sandbox, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $Sandbox" -ForegroundColor Yellow
     return $false
 }
 
@@ -219,6 +222,13 @@ function claude {
         return
     }
 
+    $rev = $null
+    if (Get-Command git -CommandType Application -ErrorAction SilentlyContinue) {
+        $rev = & git -C $script:ClaudeSandboxDir rev-parse --short HEAD 2>$null
+    }
+    if (-not $rev) { $rev = 'unknown' }
+    $script:ClaudeSandboxTag = "claude-sandbox ($rev)"
+
     Sync-ClaudeSandboxSkill $script:ClaudeSandboxDir
     Invoke-ClaudeSandboxSweep
 
@@ -241,11 +251,11 @@ function claude {
         if (Test-Path $hostSessions) { $mounts += "${hostSessions}:/claude-history-host:ro" }
     }
 
-    Write-Host "claude-sandbox: starting $name" -ForegroundColor DarkGray
+    Write-Host "$($script:ClaudeSandboxTag): starting $name" -ForegroundColor DarkGray
     $out = & sbx create --name $name claude $path @mounts 2>&1
     if ($LASTEXITCODE -ne 0 -and $mounts.Count -gt 0) {
         # Earlier sessions are a convenience: a bad mount shouldn't stop Claude from starting.
-        Write-Host "claude-sandbox: couldn't mount earlier sessions, starting without them: $out" -ForegroundColor Yellow
+        Write-Host "$($script:ClaudeSandboxTag): couldn't mount earlier sessions, starting without them: $out" -ForegroundColor Yellow
         Write-Host "claude-sandbox: these mounts need sbx 0.51.0 or newer. Check with: sbx version. Upgrade with: winget upgrade Docker.sbx" -ForegroundColor Yellow
         & sbx rm --force $name *> $null
         $out = & sbx create --name $name claude $path 2>&1

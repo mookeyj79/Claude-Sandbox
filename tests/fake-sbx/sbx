@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """A stand-in for the `sbx` CLI, for the wrapper tests. Both wrappers' tests put this first on PATH
-(Windows uses sbx.cmd, which runs this file).
+(Windows uses sbx.cmd, which runs this file). Its output and errors copy real sbx as captured in
+docs/sbx-cli.md; change both together.
 
 All state lives under $FAKE_SBX_DIR:
   calls                      every invocation, one JSON array of arguments per line

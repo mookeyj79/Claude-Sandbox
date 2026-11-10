@@ -10,7 +10,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
+- **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
 | File | Purpose |
 |---|---|
@@ -19,8 +19,11 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
-| `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `bats tests/`, or `Invoke-Pester tests` (Pester 5) on Windows |
+| `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `tests/check.sh` runs ShellCheck and bats as CI does; `Invoke-Pester tests` (Pester 5) on Windows |
+| `docs/sbx-cli.md` | Real `sbx` output the wrappers depend on, for working on them from inside a sandbox, where `sbx` isn't available |
 | `GLOSSARY.md` | The terms the code and docs use (project key, history store, sweep, ...) |
+| `CODING_STANDARDS.md` | What a review checks beyond the linters: both wrappers changed together, real `sbx` behaviour, messages that show the wrapper's commit |
+| `.githooks/` | Optional pre-commit lint: `git config core.hooksPath .githooks` |
 
 Keep these files and `skills/` together, as the clone leaves them: the wrappers look for the others next to themselves.
 
@@ -204,6 +207,7 @@ There's nothing to set up. The first time you run `claude`, the wrapper installs
 | Skill | What it does |
 |---|---|
 | `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
+| `/ship` | Commits the current work, opens a PR, waits for CI on that commit, then squash-merges and updates your local default branch. Stops without merging if a check fails. |
 | `/update-readme` | Writes or refreshes the project's README as a complete GitHub/GitLab front page: overview, install, usage, configuration, development, license. Checks every command, link and badge against the repo, and leaves the change uncommitted for you to review. |
 
 This happens silently. If an install fails, you'll see a message, and it's retried on the next run. Installed skills are refreshed at most once a day. A new skill in this repo is installed on the next run after a `git pull`. A skill added to `mattpocock/skills` after the first install isn't picked up by the refresh, so run `sbx skills add mattpocock/skills` to get it.
@@ -311,6 +315,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | Problem | Fix |
 |---|---|
 | `sbx: command not found` after installing | Close **all** terminal windows and open a new one. |
+| A fix you pulled doesn't seem to apply | The wrapper's messages show its commit, as in `claude-sandbox (3fd4520): starting ...`. Compare it with `git -C <cloned folder> log -1 --format=%h`. If they differ, open a new terminal so the wrapper reloads. If they match and the commit is old, run `git pull` in that folder. |
 | `claude` starts normal Claude | `Get-Command claude` shows `Application`, so the wrapper isn't loaded. Check the profile line, including the leading `. `. |
 | `error: not signed in to Docker` | `sbx login` |
 | `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host: `sbx secret set github -t "$(gh auth token)"`, then exit and restart `claude`. If the token itself expired, run `gh auth login` first. |
