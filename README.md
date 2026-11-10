@@ -10,7 +10,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
+- **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/clean-repo`](skills/clean-repo/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
 | File | Purpose |
 |---|---|
@@ -207,6 +207,7 @@ There's nothing to set up. The first time you run `claude`, the wrapper installs
 | Skill | What it does |
 |---|---|
 | `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
+| `/clean-repo` | Tidies the files on disk: deletes leftover junk (OS and editor files, merge leftovers, logs, stale build output), untracks junk that was committed, and adds `.gitignore` patterns so it stays out. Never deletes anything it can't identify as junk, runs the repo's checks afterwards, and leaves the change uncommitted for you to review. |
 | `/create-human-guide` | For the `ready-for-human` issues: tasks Claude can't do for you, because they need your machine, a login, a secret, a browser or your decision. Turns them all into one step-by-step guide so you can clear them in one sitting: tasks in dependency order, copy-paste commands checked against the repo, where to run each one, how to confirm it worked, and how to close the issue. Writes `human-guide.md` and leaves it uncommitted. |
 | `/ship` | Commits the current work, opens a PR, waits for CI on that commit, then squash-merges and updates your local default branch. Stops without merging if a check fails. |
 | `/update-readme` | Writes or refreshes the project's README as a complete GitHub/GitLab front page: overview, install, usage, configuration, development, license. Checks every command, link and badge against the repo, and leaves the change uncommitted for you to review. |
