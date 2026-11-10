@@ -10,7 +10,7 @@ Describe 'claude' {
         . (Join-Path $RepoRoot 'claude-sandbox.ps1')
         $script:ClaudeSandboxStateDir = Join-Path $root 'home'
         # Skill sync has its own tests; keep it quiet here.
-        Get-ChildItem -Directory (Join-Path $RepoRoot 'skills') | ForEach-Object Name |
+        @(Get-ChildItem -Directory (Join-Path $RepoRoot 'skills') | ForEach-Object Name) + $script:ClaudeSandboxSkillRepos |
             Set-Content (Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-added')
         Set-Content (Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-updated') (Get-Date -Format o)
         $project = Join-Path $root 'My Project'

@@ -25,13 +25,17 @@ $script:ClaudeSandboxStore = Join-Path $env:LOCALAPPDATA 'claude-sandbox\history
 
 $script:ClaudeSandboxStateDir      = $HOME   # skill-sync markers; tests point this elsewhere
 $script:ClaudeSandboxSkillTimeoutSec = 120
+# Skill repos every sandbox gets in full, besides this repo's own skills/. Each is installed
+# once; after that the daily `sbx skills update` keeps it current.
+$script:ClaudeSandboxSkillRepos = @('mattpocock/skills')
 
 function Sync-ClaudeSandboxSkill {
-    # Skill sync: make sure every skill in this repo's skills/ is installed in sbx, and refresh
-    # installed skills at most once a day. Never stops Claude from starting: a failed or stuck
-    # install prints how to retry, and the next run tries again.
-    # State in $script:ClaudeSandboxStateDir: .claude-sandbox-skills-added (installed skills, one
-    # per line) and .claude-sandbox-skills-updated (time of the last refresh).
+    # Skill sync: make sure every skill in this repo's skills/, and every repo in
+    # $script:ClaudeSandboxSkillRepos, is installed in sbx, and refresh installed skills at most
+    # once a day. Never stops Claude from starting: a failed or stuck install prints how to
+    # retry, and the next run tries again.
+    # State in $script:ClaudeSandboxStateDir: .claude-sandbox-skills-added (installed skills and
+    # skill repos, one per line) and .claude-sandbox-skills-updated (time of the last refresh).
     param([string]$RepoDir)
     $added = Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-added'
     $stamp = Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-skills-updated'
@@ -42,43 +46,53 @@ function Sync-ClaudeSandboxSkill {
     $have = @(if (Test-Path $added) { Get-Content $added })
     $missing = @(Get-ChildItem -Directory (Join-Path $RepoDir 'skills') -ErrorAction SilentlyContinue |
         ForEach-Object Name | Where-Object { $have -notcontains $_ })
-    # Empty stdin and a time limit, so a stuck install can't keep Claude from starting.
-    # One skill per call, with --no-input. If the skill is already installed (say, by an
-    # earlier manual `sbx skills add`), sbx would ask before overwriting it; --no-input makes
-    # it fail with "prompts are disabled by --no-input" instead. For a single named skill
-    # that's the only question it can ask, so the skill is there and counts as installed.
     foreach ($skill in $missing) {
-        $in  = New-TemporaryFile
-        $log = New-TemporaryFile
-        $err = New-TemporaryFile
-        try {
-            $p = Start-Process $sbx -ArgumentList 'skills', 'add', 'mookeyj79/Claude-Sandbox', '--skill', $skill, '--no-input' -NoNewWindow -PassThru `
-                -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
-            $null = $p.Handle   # without this, ExitCode can come back empty
-            if (-not $p.WaitForExit($script:ClaudeSandboxSkillTimeoutSec * 1000)) {
-                # Whole tree: sbx (or a .cmd shim) may have started children that hold the logs open.
-                try { $p.Kill($true) } catch { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
-                $null = $p.WaitForExit(5000)
-                Write-Host "claude-sandbox: installing skill $skill took over $($script:ClaudeSandboxSkillTimeoutSec)s, skipped." -ForegroundColor Yellow
-                $timedOut = $true
-            } else {
-                $timedOut = $false
-            }
-            $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
-            if (-not $timedOut -and ($p.ExitCode -eq 0 -or $out -match 'prompts are disabled by --no-input')) {
-                Add-Content -Path $added -Value $skill
-            } else {
-                if ($out) { Write-Host $out.TrimEnd() }
-                Write-Host "claude-sandbox: couldn't install skill $skill, will retry next run. To try now: sbx skills add mookeyj79/Claude-Sandbox --skill $skill" -ForegroundColor Yellow
-            }
-        } finally {
-            Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
-        }
+        Add-ClaudeSandboxSkill $sbx $added $skill @('mookeyj79/Claude-Sandbox', '--skill', $skill)
+    }
+    foreach ($src in $script:ClaudeSandboxSkillRepos) {
+        if ($have -notcontains $src) { Add-ClaudeSandboxSkill $sbx $added $src @($src) }
     }
 
     if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {
         Set-Content -Path $stamp -Value (Get-Date -Format o)
         Start-Process $sbx -ArgumentList 'skills', 'update' -WindowStyle Hidden
+    }
+}
+
+function Add-ClaudeSandboxSkill {
+    # One `sbx skills add`, recorded in the added file if it worked. $What is the name recorded
+    # and reported; $SbxArgs go after `sbx skills add`.
+    # Empty stdin and a time limit, so a stuck install can't keep Claude from starting.
+    # Runs with --no-input. If the skill is already installed (say, by an earlier manual
+    # `sbx skills add`), sbx would ask before overwriting it; --no-input makes it fail with
+    # "prompts are disabled by --no-input" instead. That's the only question it asks, so the
+    # skill is there and counts as installed.
+    param([string]$Sbx, [string]$Added, [string]$What, [string[]]$SbxArgs)
+    $in  = New-TemporaryFile
+    $log = New-TemporaryFile
+    $err = New-TemporaryFile
+    try {
+        $p = Start-Process $Sbx -ArgumentList (@('skills', 'add') + $SbxArgs + '--no-input') -NoNewWindow -PassThru `
+            -RedirectStandardInput $in -RedirectStandardOutput $log -RedirectStandardError $err
+        $null = $p.Handle   # without this, ExitCode can come back empty
+        if (-not $p.WaitForExit($script:ClaudeSandboxSkillTimeoutSec * 1000)) {
+            # Whole tree: sbx (or a .cmd shim) may have started children that hold the logs open.
+            try { $p.Kill($true) } catch { $p | Stop-Process -Force -ErrorAction SilentlyContinue }
+            $null = $p.WaitForExit(5000)
+            Write-Host "claude-sandbox: installing skill $What took over $($script:ClaudeSandboxSkillTimeoutSec)s, skipped." -ForegroundColor Yellow
+            $timedOut = $true
+        } else {
+            $timedOut = $false
+        }
+        $out = (Get-Content $log, $err -Raw -ErrorAction SilentlyContinue) -join ''
+        if (-not $timedOut -and ($p.ExitCode -eq 0 -or $out -match 'prompts are disabled by --no-input')) {
+            Add-Content -Path $Added -Value $What
+        } else {
+            if ($out) { Write-Host $out.TrimEnd() }
+            Write-Host "claude-sandbox: couldn't install skill $What, will retry next run. To try now: sbx skills add $($SbxArgs -join ' ')" -ForegroundColor Yellow
+        }
+    } finally {
+        Remove-Item $in, $log, $err -ErrorAction SilentlyContinue
     }
 }
 

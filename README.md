@@ -10,7 +10,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Matt Pocock's skills** are preloaded and refreshed daily, plus this repo's own [`/clean-git`](skills/clean-git/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md).
+- **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
 | File | Purpose |
 |---|---|
@@ -24,22 +24,76 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 
 Keep these files and `skills/` together, as the clone leaves them: the wrappers look for the others next to themselves.
 
-**Contents:** [Quick start](#quick-start-windows) · [Setup](#setup) · [Verify it's working](#verify-its-working) · [Usage](#usage) · [How it works](#how-it-works) · [Managing sandboxes](#managing-sandboxes) · [Updating](#updating) · [Limitations](#limitations) · [Troubleshooting](#troubleshooting) · [Uninstall](#uninstall)
+**Contents:** [New system](#new-system-what-you-do-what-happens-on-its-own) · [Setup](#setup) · [Skills](#skills) · [Verify it's working](#verify-its-working) · [Usage](#usage) · [How it works](#how-it-works) · [Managing sandboxes](#managing-sandboxes) · [Updating](#updating) · [Limitations](#limitations) · [Troubleshooting](#troubleshooting) · [Uninstall](#uninstall)
 
-## Quick start (Windows)
+## New system: what you do, what happens on its own
+
+### You do this once
+
+First check the [requirements](#1-requirements). On Windows, that means Windows Hypervisor Platform must be enabled.
+
+**Windows (PowerShell):**
 
 ```powershell
-winget install -h Docker.sbx                 # then close ALL terminal windows and open a new one
-sbx login                                    # sign in to Docker (device code in the browser)
+# 1. Tools. Then close ALL terminal windows and open a new one, so they're on your PATH.
+winget install -h Docker.sbx
+winget install -h Git.Git
+winget install -h GitHub.cli
+
+# 2. Sign in (each opens a browser)
+gh auth login                                # GitHub, on your machine
+sbx login                                    # Docker
+
+# 3. Sandbox settings, shared by every sandbox
 sbx policy init balanced                     # network policy
-sbx secret set github -t "$(gh auth token)"  # GitHub access for git push / gh
-sbx skills add mattpocock/skills             # preload skills
+sbx secret set github -t "$(gh auth token)"  # lets sandboxes git push and use gh
+
+# 4. Get the scripts and load the wrapper in every new terminal
+git clone https://github.com/mookeyj79/Claude-Sandbox.git
 if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out-Null }
-git clone https://github.com/mookeyj79/Claude-Sandbox.git                  # get the scripts
-Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"          # load the wrapper
+Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"
 ```
 
-Open a new terminal, `cd` into a project, run `claude`, then `/login` once. Each step is explained below.
+**Linux / macOS (bash or zsh):** install `sbx` using [Docker's instructions](https://docs.docker.com/ai/sandboxes/install/). Install Git and the [GitHub CLI](https://cli.github.com/) too, then:
+
+```bash
+gh auth login
+sbx login
+sbx policy init balanced
+sbx secret set github -t "$(gh auth token)"
+git clone https://github.com/mookeyj79/Claude-Sandbox.git
+echo "source $PWD/Claude-Sandbox/claude-sandbox.sh" >> ~/.bashrc   # or ~/.zshrc
+```
+
+**Then, in a new terminal:**
+
+```
+cd <some project>
+claude          # first run downloads the sandbox image (~430 MB)
+/login          # inside Claude, once. Later sandboxes start signed in.
+```
+
+Setup is done. Check it worked with [Verify it's working](#verify-its-working). The [Setup](#setup) section below explains each step.
+
+### Every `claude` run does this for you
+
+| What | When |
+|---|---|
+| Installs [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's [skills](#skills) | First run. A new skill in this repo is installed on the next run after a `git pull`. |
+| Refreshes installed skills | At most once a day, in the background |
+| Saves and deletes sandboxes left over from earlier runs | Every run |
+| Creates a fresh sandbox, restores this folder's history, mounts earlier sessions read-only | Every run |
+| Updates Claude Code, sets Opus / medium effort / auto mode, installs the status line | Every run, inside the sandbox |
+| Saves history back to your machine and deletes the sandbox | When Claude exits |
+
+### You redo these only when something changes
+
+| When | Run |
+|---|---|
+| Your GitHub token changes (new `gh auth login`, expired or rotated token) | `sbx secret set github -t "$(gh auth token)"` |
+| You want a newer version of these scripts | `git pull` in the cloned folder, then open a new terminal |
+| A site you need is blocked | `sbx policy allow network <host>` |
+| `sbx` itself is out of date | `winget upgrade Docker.sbx` |
 
 ---
 
@@ -61,7 +115,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
 
 **Linux** (Ubuntu 24.04+, with KVM) and **macOS**: see https://docs.docker.com/ai/sandboxes/install/
 
-You don't need Docker Desktop. You do need [Git](https://git-scm.com/), to clone the scripts (`winget install -h Git.Git`).
+You don't need Docker Desktop. You do need [Git](https://git-scm.com/), to clone the scripts (`winget install -h Git.Git`), and the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`, for [GitHub access](#5-github-access) (`winget install -h GitHub.cli`).
 
 ### 2. Install `sbx`
 
@@ -105,28 +159,7 @@ This copies your host GitHub CLI token into `sbx`, and its proxy then adds it to
 
 **Run it again if the token changes:** after you sign in again with `gh auth login`, rotate a personal access token, or the token expires or is revoked. The secret is a copy taken when you ran the command, so it doesn't follow those changes. Sandboxes that are already running keep the old token. Exit Claude and start it again to pick up the new one.
 
-### 6. Skills
-
-```
-sbx skills add mattpocock/skills
-```
-
-This installs every skill in the repo, including drafts that the Claude plugin leaves out. Remove one with `sbx skills rm <name>`, or install only some:
-
-```
-sbx skills add mattpocock/skills --skill grilling --skill wayfinder --skill tdd
-```
-
-The wrappers also install this repo's own skills (`sbx skills add mookeyj79/Claude-Sandbox`) the first time you run `claude`, and install any new skill on the next run after a `git pull`. This happens silently. If an install fails, you'll see a message and it's retried on the next run. There's nothing to do for these:
-
-| Skill | What it does |
-|---|---|
-| `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
-| `/update-readme` | Writes or refreshes the project's README as a complete GitHub/GitLab front page: overview, install, usage, configuration, development, license. Checks every command, link and badge against the repo, and leaves the change uncommitted for you to review. |
-
-To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
-
-### 7. Get the scripts
+### 6. Get the scripts
 
 Clone this repo anywhere you like. The next step points at that folder.
 
@@ -134,7 +167,7 @@ Clone this repo anywhere you like. The next step points at that folder.
 git clone https://github.com/mookeyj79/Claude-Sandbox.git
 ```
 
-### 8. Load the wrapper
+### 7. Load the wrapper
 
 **PowerShell:** add this line to your profile (`notepad $PROFILE`), using the folder you cloned into:
 
@@ -150,7 +183,7 @@ The leading `. ` (dot, space) is required. Without it the `claude` function disa
 source /path/to/Claude-Sandbox/claude-sandbox.sh
 ```
 
-### 9. First run
+### 8. First run
 
 ```
 cd D:\Dev\my-project
@@ -160,6 +193,24 @@ claude
 - The first run downloads the sandbox image, about 430 MB. After that, a run starts in about 30 seconds, including the Claude Code update.
 - Run `/login` inside Claude. You only need to **once**: `sbx` stores the login globally (`sbx secret ls` shows `anthropic (oauth configured)`), and later sandboxes start logged in.
 - To use an API key instead: `sbx secret set anthropic`. The key stays in Windows Credential Manager or the OS keychain and is added by a proxy, so the sandbox never sees it.
+
+## Skills
+
+There's nothing to set up. The first time you run `claude`, the wrapper installs these into `sbx`, so every sandbox has them:
+
+- **All of [Matt Pocock's skills](https://github.com/mattpocock/skills)** (`mattpocock/skills`), including drafts that the Claude plugin leaves out.
+- **This repo's own skills:**
+
+| Skill | What it does |
+|---|---|
+| `/clean-git` | Merges open PRs that are ready (not a draft, no conflicts, checks passing), then removes dead worktrees and merged branches. Keeps anything with unpushed or unmerged work and reports it. |
+| `/update-readme` | Writes or refreshes the project's README as a complete GitHub/GitLab front page: overview, install, usage, configuration, development, license. Checks every command, link and badge against the repo, and leaves the change uncommitted for you to review. |
+
+This happens silently. If an install fails, you'll see a message, and it's retried on the next run. Installed skills are refreshed at most once a day. A new skill in this repo is installed on the next run after a `git pull`. A skill added to `mattpocock/skills` after the first install isn't picked up by the refresh, so run `sbx skills add mattpocock/skills` to get it.
+
+To remove one of the installed skills, run `sbx skills rm <name>`. It stays removed, because the wrapper installs each skill and skill repo only once.
+
+To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
 
 ## Verify it's working
 

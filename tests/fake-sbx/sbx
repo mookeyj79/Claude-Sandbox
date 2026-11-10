@@ -10,6 +10,7 @@ All state lives under $FAKE_SBX_DIR:
   skill-<name>               how `sbx skills add --skill <name>` behaves:
                                ok (default) | exists | fail | hang
                              exists: already installed, so sbx would ask before overwriting
+  skill-<owner>__<repo>      the same, for `sbx skills add <owner>/<repo>` without --skill
   create-fails-with-mounts   if present, `sbx create` with extra mounts fails
   ls-plain                   if present, `sbx ls` prints statuses without the leading dot
 """
@@ -94,8 +95,8 @@ def cmd_ls(args):
 def cmd_skills(args):
     if args[:1] == ["update"]:
         return 0
-    if args[:1] == ["add"] and "--skill" in args:
-        skill = args[args.index("--skill") + 1]
+    if args[:1] == ["add"] and len(args) > 1:
+        skill = args[args.index("--skill") + 1] if "--skill" in args else args[1].replace("/", "__")
         mode = read(os.path.join(STATE, f"skill-{skill}"), "ok")
         if mode == "hang":
             time.sleep(600)
