@@ -75,4 +75,10 @@ Describe 'claude' {
         $out | Should -Match "cleaning up leftover sandbox $key-old1"
         Join-Path $store 'projects/p/s1.jsonl' | Should -Exist
     }
+
+    It 'says which commit of the wrapper is running' {
+        $rev = & git -C $RepoRoot rev-parse --short HEAD
+        $out = (claude 6>&1) -join "`n"
+        $out | Should -Match ([regex]::Escape("claude-sandbox ($rev): starting $key-"))
+    }
 }

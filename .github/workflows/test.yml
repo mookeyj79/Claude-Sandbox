@@ -23,7 +23,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = macOS ]; then brew install bats-core; else sudo apt-get update && sudo apt-get install -y bats; fi
       - name: bats
-        run: bats tests/
+        run: tests/check.sh test
 
   powershell:
     runs-on: windows-latest

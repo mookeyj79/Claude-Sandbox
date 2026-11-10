@@ -24,6 +24,9 @@
 # Git Bash note: run it inside Windows Terminal (the old mintty window has no real console).
 
 _CLAUDE_SANDBOX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# Prefix for the lines users paste back when something goes wrong. _claude_sandbox_main adds
+# the wrapper's commit, so a stale checkout shows at a glance.
+_CLAUDE_SANDBOX_TAG="claude-sandbox"
 
 _claude_sandbox_is_windows() {
     case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) return 0 ;; *) return 1 ;; esac
@@ -120,7 +123,7 @@ _claude_sandbox_close() {
         sbx rm --force "$1" >/dev/null 2>&1
     else
         sbx stop "$1" >/dev/null 2>&1
-        echo "claude-sandbox: WARNING: couldn't save history from $1, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $1" >&2
+        echo "$_CLAUDE_SANDBOX_TAG: WARNING: couldn't save history from $1, so the sandbox was kept. The next claude run will retry. To give up on it and delete it: sbx rm --force $1" >&2
         return 1
     fi
 }
@@ -210,14 +213,15 @@ _claude_sandbox_add_skill() {
     if [ "$rc" -eq 0 ] || [[ "$out" == *"prompts are disabled by --no-input"* ]]; then
         echo "$what" >> "$added"
     else
-        [ "$rc" -eq 143 ] && echo "claude-sandbox: installing skill $what took over ${limit}s, skipped." >&2
+        [ "$rc" -eq 143 ] && echo "$_CLAUDE_SANDBOX_TAG: installing skill $what took over ${limit}s, skipped." >&2
         [ -n "$out" ] && echo "$out" >&2
-        echo "claude-sandbox: couldn't install skill $what, will retry next run. To try now: sbx skills add $*" >&2
+        echo "$_CLAUDE_SANDBOX_TAG: couldn't install skill $what, will retry next run. To try now: sbx skills add $*" >&2
     fi
 }
 
 _claude_sandbox_main() {
     export MSYS_NO_PATHCONV=1   # Git Bash: don't rewrite "name:/tmp/..." arguments
+    _CLAUDE_SANDBOX_TAG="claude-sandbox ($(git -C "$_CLAUDE_SANDBOX_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown))"
 
     _claude_sandbox_sync_skills "$_CLAUDE_SANDBOX_DIR"
     _claude_sandbox_sweep
@@ -234,11 +238,11 @@ _claude_sandbox_main() {
             mounts+=("$(_claude_sandbox_hostpath "$HOME/.claude/projects"):/claude-history-host:ro")
     fi
 
-    echo "claude-sandbox: starting $name" >&2
+    echo "$_CLAUDE_SANDBOX_TAG: starting $name" >&2
     if ! out="$(sbx create --name "$name" claude "$(_claude_sandbox_hostpath "$PWD")" "${mounts[@]}" 2>&1)"; then
         # Earlier sessions are a convenience: a bad mount shouldn't stop Claude from starting.
         [ "${#mounts[@]}" -gt 0 ] || { echo "$out" >&2; return 1; }
-        echo "claude-sandbox: couldn't mount earlier sessions, starting without them: $out" >&2
+        echo "$_CLAUDE_SANDBOX_TAG: couldn't mount earlier sessions, starting without them: $out" >&2
         echo "claude-sandbox: these mounts need sbx 0.51.0 or newer. Check with: sbx version" >&2
         sbx rm --force "$name" >/dev/null 2>&1
         if ! out="$(sbx create --name "$name" claude "$(_claude_sandbox_hostpath "$PWD")" 2>&1)"; then

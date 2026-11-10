@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: ShellCheck
-        run: shellcheck -x claude-sandbox.sh sandbox-setup.sh statusline.sh tests/helpers.bash
+      - name: ShellCheck, ASCII-only .ps1
+        run: tests/check.sh lint
 
   psscriptanalyzer:
     runs-on: windows-latest

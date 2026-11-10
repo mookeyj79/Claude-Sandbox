@@ -85,3 +85,8 @@ EOF
     [ "$output" = "host claude -p hi" ]
     [ -z "$(sbx_calls)" ]
 }
+
+@test "says which commit of the wrapper is running" {
+    run claude
+    [[ "$output" == *"claude-sandbox ($(git -C "$REPO_ROOT" rev-parse --short HEAD)): starting $key-"* ]]
+}

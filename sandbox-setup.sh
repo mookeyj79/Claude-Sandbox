@@ -16,6 +16,21 @@ if [ -d "$in/projects" ]; then
 fi
 [ -f "$in/history.jsonl" ] && cp "$in/history.jsonl" "$c/history.jsonl"
 
+# The sandbox image's ~/.claude/CLAUDE.md, loaded into every turn, warns about shell completions
+# twice: a "## Critical: ..." section and, near the end, a "### ... CLAUDE_ENV_FILE" copy. Drop
+# the copy, up to the next heading of level 1-3 outside a code block or an HTML comment (sbx
+# closes its guidance with a "<!-- sbx:guidance end -->" marker, which must stay). Only when
+# the first copy is there.
+if [ -f "$c/CLAUDE.md" ] &&
+   grep -q '^## Critical: Shell Completions Must NOT Be in the Persistent Environment File$' "$c/CLAUDE.md"; then
+    awk '
+        /^```/ { fence = !fence }
+        !fence && /^### Shell Completions Must NOT Be in CLAUDE_ENV_FILE$/ { skip = 1; next }
+        skip && !fence && (/^#{1,3} / || /^<!--/) { skip = 0 }
+        !skip
+    ' "$c/CLAUDE.md" > "$c/CLAUDE.md.tmp" && mv "$c/CLAUDE.md.tmp" "$c/CLAUDE.md"
+fi
+
 # Tell Claude about the read-only session mounts the wrapper added, if any.
 sandbox_history=/claude-history-sandbox
 host_history=/claude-history-host
