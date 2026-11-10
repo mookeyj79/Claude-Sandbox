@@ -25,6 +25,18 @@ lint() {
         echo "check: the lines above have non-ASCII characters; .ps1 files must be ASCII" >&2
         return 1
     fi
+    # sbx parses SKILL.md frontmatter as strict YAML: an unquoted value with ": " or " #" in it
+    # is rejected and the skill is skipped. Quote such values.
+    if awk 'FNR == 1 { fm = ($0 == "---"); next }
+            fm && $0 == "---" { fm = 0 }
+            fm && match($0, /^[A-Za-z_-]+: /) {
+                v = substr($0, RLENGTH + 1)
+                if (v !~ /^["\047]/ && (v ~ /: / || v ~ / #/)) { print FILENAME ":" FNR ": " $0; bad = 1 }
+            }
+            END { exit !bad }' skills/*/SKILL.md; then
+        echo "check: quote the value on the SKILL.md frontmatter lines above" >&2
+        return 1
+    fi
 }
 
 tests() {
