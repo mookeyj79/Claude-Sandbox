@@ -70,6 +70,8 @@ MD
 
 # Stands in sudo (logging each command) and curl; $1 is the package whose install fails, if any.
 stub_installer() {
+    # sandbox-setup.sh runs only inside the (Linux) sandbox; macOS has neither of these.
+    command -v flock >/dev/null && command -v setsid >/dev/null || skip "needs flock and setsid (Linux)"
     rm "$BATS_TEST_TMPDIR/bin/chromium" "$BATS_TEST_TMPDIR/bin/pwsh"
     # A PATH holding only what the script needs, so a real chromium or pwsh on this machine is hidden.
     local sys="$BATS_TEST_TMPDIR/sys" cmd
