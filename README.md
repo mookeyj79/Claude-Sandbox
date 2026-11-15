@@ -10,13 +10,14 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
+- **Chromium and PowerShell (`pwsh`) installed** in every sandbox, in the background while Claude starts (about a minute). Claude is told to wait for the install before using them.
 - **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/clean-repo`](skills/clean-repo/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
 | File | Purpose |
 |---|---|
 | `claude-sandbox.ps1` | PowerShell wrapper (Windows) |
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
-| `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, update Claude Code and apply defaults |
+| `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, install Chromium and PowerShell, update Claude Code and apply defaults |
 | `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
 | `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `tests/check.sh` runs ShellCheck and bats as CI does; `Invoke-Pester tests` (Pester 5) on Windows |
@@ -309,7 +310,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 - **Host `~/.claude` isn't used:** global settings, status line, plugins, MCP servers and memory stay on the host. Project-level config in the repo (`.claude/`, `CLAUDE.md`, `.mcp.json`) *is* used.
 - **Separate history:** `--resume` doesn't mix host and sandboxed sessions, or sessions from different folders. Claude can still [read them](#earlier-sessions).
 - **Pasting images** is off by default. Turn it on with `sbx settings set clipboard.imagePaste true`.
-- **Linux only inside:** Windows tools (`powershell.exe`, host `.exe` files) aren't available.
+- **Linux only inside:** Windows tools (`powershell.exe`, host `.exe` files) aren't available. PowerShell 7 for Linux (`pwsh`) is.
 - **Blocked traffic:** local-network UDP (mDNS/SSDP) and ICMP (`ping`).
 
 ## Troubleshooting
