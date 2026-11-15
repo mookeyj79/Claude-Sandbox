@@ -49,12 +49,13 @@ Describe 'History store' {
         Get-ClaudeSandboxProject 'my-own-sandbox' | Should -BeNullOrEmpty
     }
 
-    It "pushes the project's store into the sandbox" {
+    It "copies sandbox/ and the project's store into the sandbox on prepare" {
         New-Item -ItemType Directory -Force (Join-Path $store "$key/projects/p") | Out-Null
         Set-Content -NoNewline -Path (Join-Path $store "$key/projects/p/s1.jsonl") -Value 's1'
         New-FakeSandbox $box running
-        Push-ClaudeSandboxHistory $box
-        Get-Content -Raw (Join-Path $boxes "$box/fs/tmp/claude-hist/projects/p/s1.jsonl") | Should -Be 's1'
+        Initialize-ClaudeSandbox $box 6>$null | Should -BeTrue
+        Get-Content -Raw (Join-Path $boxes "$box/fs/tmp/claude-sandbox/history/projects/p/s1.jsonl") | Should -Be 's1'
+        Join-Path $boxes "$box/fs/tmp/claude-sandbox/setup.sh" | Should -Exist
     }
 
     It 'merges sessions and copies prompt history on save' {

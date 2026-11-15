@@ -33,22 +33,29 @@ Describe 'claude' {
         claude --resume 6>$null
         $calls = Get-SbxCall
         ($calls -like 'create --name *')[0] | Should -BeLike "create --name $key-???? claude $project *"
-        $calls -like 'exec *setup.sh opus medium auto' | Should -Not -BeNullOrEmpty
+        $calls -like 'exec * bash /tmp/claude-sandbox/setup.sh - - -' | Should -Not -BeNullOrEmpty
         $calls -like 'exec * claude --resume' | Should -Not -BeNullOrEmpty
-        $calls -like "cp *$key $key-????:/tmp/claude-hist" | Should -Not -BeNullOrEmpty
+        $calls -like "cp *sandbox $key-????:/tmp/claude-sandbox" | Should -Not -BeNullOrEmpty
+        $calls -like "cp *$key $key-????:/tmp/claude-sandbox/history" | Should -Not -BeNullOrEmpty
         $calls -like "rm --force $key-*" | Should -Not -BeNullOrEmpty
         @(Get-ChildItem $boxes) | Should -HaveCount 0
     }
 
-    It 'takes model, effort and permission mode from the environment' {
+    It 'passes model, effort and permission mode on as set, set-but-empty, or not set' {
         $env:CLAUDE_SANDBOX_MODEL = 'sonnet'
         $env:CLAUDE_SANDBOX_EFFORT = ''
-        $env:CLAUDE_SANDBOX_PERMISSION_MODE = 'bypassPermissions'
         claude 6>$null
-        # Setting '' deletes the variable before PowerShell 7.5 (effort: medium) and keeps it
-        # empty from 7.5 on (effort: unset). Either way three arguments arrive, in order.
+        # Setting '' deletes the variable before PowerShell 7.5 (effort: not set, '-') and keeps
+        # it empty from 7.5 on ('='). Either way three arguments arrive, in order.
         Get-SbxCall | Where-Object { $_ -like 'exec *setup.sh*' } |
-            Should -Match 'setup\.sh sonnet (medium|unset) bypassPermissions$'
+            Should -Match 'setup\.sh =sonnet (-|=) -$'
+    }
+
+    It "doesn't start Claude in a sandbox whose setup failed" {
+        New-Item -ItemType File (Join-Path $env:FAKE_SBX_DIR 'setup-fails') | Out-Null
+        $out = (claude 6>&1) -join "`n"
+        $out | Should -Match "ERROR: setting up $key-.*failed \(see above\), so Claude wasn't started"
+        Get-SbxCall | Where-Object { $_ -like 'exec * claude' } | Should -BeNullOrEmpty
     }
 
     It 'mounts earlier sessions read-only unless turned off' {

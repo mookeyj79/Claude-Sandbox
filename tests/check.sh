@@ -19,7 +19,7 @@ need() {
 
 lint() {
     need shellcheck
-    shellcheck -x claude-sandbox.sh sandbox-setup.sh statusline.sh tests/helpers.bash tests/check.sh .githooks/pre-commit || return 1
+    shellcheck -x claude-sandbox.sh sandbox/setup.sh sandbox/statusline.sh tests/helpers.bash tests/check.sh .githooks/pre-commit || return 1
     # Windows PowerShell 5.1 reads a .ps1 without a BOM as ANSI, so any non-ASCII byte is garbled.
     if LC_ALL=C grep -n "$(printf '[\200-\377]')" ./*.ps1 tests/*.ps1; then
         echo "check: the lines above have non-ASCII characters; .ps1 files must be ASCII" >&2

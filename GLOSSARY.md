@@ -24,6 +24,13 @@ _Avoid_: backup, cache
 Read-only views of the history store (and the host's own sessions) mounted into a sandbox so Claude can look things up in past chats.
 _Avoid_: shared history
 
+**Prepare (a sandbox)**:
+Copy this repo's `sandbox/` folder and the project's history into a new sandbox, then run `sandbox/setup.sh` once. If any step fails, Claude isn't started.
+_Avoid_: setup (that's the script), init, bootstrap
+
+**Staging folder**:
+`/tmp/claude-sandbox` inside a sandbox, where prepare puts `sandbox/` and the project's history (`history/`). It's the only path the wrappers and `sandbox/setup.sh` both know.
+
 **Close (a sandbox)**:
 Save a sandbox's history to the history store, then delete it. If the save fails, the sandbox is kept, stopped, instead.
 _Avoid_: cleanup, remove, release

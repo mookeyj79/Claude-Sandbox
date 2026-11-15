@@ -11,8 +11,8 @@
 #   - Several windows (same or different folders) each get their own sandbox.
 #   - On Windows, Git Bash and PowerShell share the same history store.
 #
-# Defaults (export to override; set to "" or "unset" to keep the sandbox's own default):
-#   CLAUDE_SANDBOX_MODEL=opus  CLAUDE_SANDBOX_EFFORT=medium  CLAUDE_SANDBOX_PERMISSION_MODE=auto
+# Defaults: CLAUDE_SANDBOX_MODEL, CLAUDE_SANDBOX_EFFORT and CLAUDE_SANDBOX_PERMISSION_MODE override
+# the ones in sandbox/setup.sh; set one to "" or "unset" to keep the sandbox's own setting.
 #
 # Earlier sessions from every project are mounted read-only so Claude can look things up in them.
 #   CLAUDE_SANDBOX_SHARE_HISTORY=0   keep them out (this folder's own sessions are still restored)
@@ -39,7 +39,7 @@ _claude_sandbox_hostpath() {
 
 # ---- History store ------------------------------------------------------------------------
 # Session history lives on the host, one folder per project, so --resume works across
-# throwaway sandboxes. Callers only need: project_key, new_name, push_history, close.
+# throwaway sandboxes. Callers only need: project_key, new_name, prepare, close.
 # The sandbox name carries the project key, so a leftover sandbox can be traced to its folder.
 
 _claude_sandbox_store_root() {
@@ -84,16 +84,37 @@ _claude_sandbox_project_of() {
     printf '%s' "$1" | sed -E 's/^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$/\1/'
 }
 
-# Copy the project's saved history into a new sandbox, where sandbox-setup.sh restores it.
-_claude_sandbox_push_history() {
-    local store
-    store="$(_claude_sandbox_store_root)/$(_claude_sandbox_project_of "$1")"
+# Where a new sandbox gets this repo's sandbox/ folder, with the project's history in history/.
+# sandbox/setup.sh finds everything relative to itself, so this is the one path both sides share.
+_CLAUDE_SANDBOX_STAGE=/tmp/claude-sandbox
+
+# One user setting for sandbox/setup.sh: "-" if the variable isn't set, else "=<value>" (so
+# "set but empty" survives as "="). Written per variable, not with ${!name}, which zsh lacks.
+_claude_sandbox_setting() { if [ "$1" = set ]; then printf '=%s' "$2"; else printf -- -; fi; }
+
+# Prepare a new sandbox: copy in sandbox/ and the project's history, then run setup once.
+# Fails, having said why, if any step did; Claude shouldn't start in a half-prepared sandbox.
+_claude_sandbox_prepare() {
+    local name="$1" store
+    store="$(_claude_sandbox_store_root)/$(_claude_sandbox_project_of "$name")"
     mkdir -p "$store"
-    sbx cp "$(_claude_sandbox_hostpath "$store")" "$1:/tmp/claude-hist" >/dev/null 2>&1
+    # sandbox/ first: copied to a path that doesn't exist yet, it lands as the folder itself.
+    if ! sbx cp "$(_claude_sandbox_hostpath "$_CLAUDE_SANDBOX_DIR/sandbox")" "$name:$_CLAUDE_SANDBOX_STAGE" >/dev/null 2>&1 ||
+       ! sbx cp "$(_claude_sandbox_hostpath "$store")" "$name:$_CLAUDE_SANDBOX_STAGE/history" >/dev/null 2>&1; then
+        echo "$_CLAUDE_SANDBOX_TAG: ERROR: couldn't copy setup files and history into $name, so Claude wasn't started. Run claude again to retry." >&2
+        return 1
+    fi
+    if ! sbx exec "$name" bash "$_CLAUDE_SANDBOX_STAGE/setup.sh" \
+            "$(_claude_sandbox_setting "${CLAUDE_SANDBOX_MODEL+set}" "${CLAUDE_SANDBOX_MODEL-}")" \
+            "$(_claude_sandbox_setting "${CLAUDE_SANDBOX_EFFORT+set}" "${CLAUDE_SANDBOX_EFFORT-}")" \
+            "$(_claude_sandbox_setting "${CLAUDE_SANDBOX_PERMISSION_MODE+set}" "${CLAUDE_SANDBOX_PERMISSION_MODE-}")"; then
+        echo "$_CLAUDE_SANDBOX_TAG: ERROR: setting up $name failed (see above), so Claude wasn't started. Run claude again to retry." >&2
+        return 1
+    fi
 }
 
 # Copy a sandbox's session history into the store for its project.
-# Fails if anything went wrong. A missing projects/ folder counts as a failure: sandbox-setup.sh
+# Fails if anything went wrong. A missing projects/ folder counts as a failure: sandbox/setup.sh
 # always creates it, so missing means the copy didn't work.
 _claude_sandbox_save_history() {
     local sandbox="$1" store tmp failed=0
@@ -230,7 +251,7 @@ _claude_sandbox_main() {
     if _claude_sandbox_is_windows; then here="$(pwd -W)"; else here="$PWD"; fi
     name="$(_claude_sandbox_new_name "$(_claude_sandbox_project_key "$here")")"
 
-    # Read-only views of earlier sessions. sandbox-setup.sh tells Claude where they are.
+    # Read-only views of earlier sessions. sandbox/setup.sh tells Claude where they are.
     local mounts=()
     if [ "${CLAUDE_SANDBOX_SHARE_HISTORY:-1}" != "0" ]; then
         mounts+=("$(_claude_sandbox_hostpath "$(_claude_sandbox_store_root)"):/claude-history-sandbox:ro")
@@ -255,11 +276,7 @@ _claude_sandbox_main() {
     trap "echo 'claude-sandbox: saving history and removing $name' >&2; _claude_sandbox_close '$name'" EXIT
     trap 'exit 130' INT TERM HUP
 
-    _claude_sandbox_push_history "$name"
-    sbx cp "$(_claude_sandbox_hostpath "$_CLAUDE_SANDBOX_DIR/sandbox-setup.sh")" "$name:/tmp/claude-sandbox-setup.sh" >/dev/null 2>&1
-    sbx cp "$(_claude_sandbox_hostpath "$_CLAUDE_SANDBOX_DIR/statusline.sh")" "$name:/tmp/claude-statusline.sh" >/dev/null 2>&1
-    sbx exec "$name" bash /tmp/claude-sandbox-setup.sh \
-        "${CLAUDE_SANDBOX_MODEL-opus}" "${CLAUDE_SANDBOX_EFFORT-medium}" "${CLAUDE_SANDBOX_PERMISSION_MODE-auto}"
+    _claude_sandbox_prepare "$name" || return 1
 
     # `sbx exec`, not `sbx run`: run always adds --dangerously-skip-permissions, which overrides
     # the permission mode set in settings.json. exec runs exactly the command we give it.
