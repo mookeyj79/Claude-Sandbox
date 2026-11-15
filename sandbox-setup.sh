@@ -54,6 +54,46 @@ EOF
     } >> "$c/CLAUDE.md"
 fi
 
+# Install Chromium (Debian) and PowerShell (Microsoft's apt repo), which the image lacks. This
+# takes about a minute, so it runs in the background while Claude starts; CLAUDE.md tells Claude
+# to wait before using either. The install holds a lock (taken here, before it starts, so there's
+# no window where Claude could see it free) and writes its result to the marker even on failure.
+tools="${CLAUDE_SANDBOX_TOOLS_DIR:-/tmp}"
+if ! command -v chromium >/dev/null 2>&1 || ! command -v pwsh >/dev/null 2>&1; then
+    rm -f "$tools/claude-sandbox-tools.done"
+    exec 9>"$tools/claude-sandbox-tools.lock"
+    flock 9
+    # shellcheck disable=SC2016  # expanded by the inner bash
+    setsid nohup bash -c '
+        log="$1/claude-sandbox-tools.log"
+        {
+            . /etc/os-release
+            deb="$1/packages-microsoft-prod.deb"
+            curl -fsSL -o "$deb" "https://packages.microsoft.com/config/debian/$VERSION_ID/packages-microsoft-prod.deb" &&
+                sudo dpkg -i "$deb" || echo "claude-sandbox: could not add the Microsoft apt repo"
+            sudo apt-get update
+            # PowerShell'"'"'s post-install runs add-shell, which fails when /etc/shells is missing
+            # (as in the sbx image) and leaves the package half-installed, blocking later installs.
+            [ -e /etc/shells ] || printf "/bin/sh\n/bin/bash\n" | sudo tee /etc/shells >/dev/null
+            # One at a time, so a PowerShell failure (say, the repo above) still leaves Chromium.
+            failed=""
+            for pkg in chromium powershell; do
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" ||
+                    failed="$failed $pkg"
+            done
+            if [ -z "$failed" ]; then echo "exit status 0"; else echo "exit status 1: failed to install:$failed"; fi
+        } >"$log" 2>&1
+        tail -n 1 "$log" > "$1/claude-sandbox-tools.done"
+    ' _ "$tools" >/dev/null 2>&1 &
+    exec 9>&-   # the background install keeps the lock until it exits
+    cat >> "$c/CLAUDE.md" <<EOF
+
+# Chromium and PowerShell
+
+\`chromium\` and \`pwsh\` are being installed in the background as this session starts. Before the first use of either, wait for the install (it blocks until done, at most about two minutes): \`flock $tools/claude-sandbox-tools.lock cat $tools/claude-sandbox-tools.done\` (\`exit status 0\` means success; the full log is \`$tools/claude-sandbox-tools.log\`).
+EOF
+fi
+
 # Update Claude Code now, so the session starts on the latest version instead of updating in the
 # background and asking for a /restart. A failed update just leaves the image's version in place.
 echo "claude-sandbox: updating Claude Code" >&2
