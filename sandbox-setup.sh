@@ -4,6 +4,46 @@
 # Empty or 'unset' leaves a setting as the sandbox has it. ('unset' because PowerShell can't
 # hold an empty environment variable: setting one to '' deletes it.)
 set -u
+
+# Background half of the Chromium/PowerShell install below: sandbox-setup.sh --install-tools <dir>
+install_tools() {
+    local dir="$1" failed="" i
+    # The image ships with empty package lists, so nothing installs until an update succeeds;
+    # retry in case the network isn't ready yet this early in the sandbox's life.
+    for i in 1 2 3 4 5 6; do
+        sudo apt-get update && break
+        [ "$i" = 6 ] && failed=" apt-get-update"
+        sleep 10
+    done
+    # libicu for PowerShell, which needs ICU and gets none from a tarball.
+    local icu
+    icu="$(apt-cache pkgnames libicu | grep -E '^libicu[0-9]+$' | sort -V | tail -n 1)"
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium ${icu:+"$icu"} ||
+        failed="$failed chromium"
+    # PowerShell from its GitHub release (github.com is always reachable: git needs it), not
+    # Microsoft's apt repo, which sandbox network policies may block.
+    local arch tag tgz
+    case "$(uname -m)" in x86_64) arch=x64 ;; aarch64) arch=arm64 ;; *) arch=unsupported ;; esac
+    tag="$(curl -fsSI https://github.com/PowerShell/PowerShell/releases/latest |
+        sed -n 's|^[Ll]ocation: .*/tag/v\([0-9.]*\).*|\1|p')"
+    tgz="$dir/powershell.tar.gz"
+    if [ -n "$tag" ] && [ "$arch" != unsupported ] &&
+       curl -fsSL -o "$tgz" "https://github.com/PowerShell/PowerShell/releases/download/v$tag/powershell-$tag-linux-$arch.tar.gz" &&
+       sudo mkdir -p /opt/microsoft/powershell/7 &&
+       sudo tar -xzf "$tgz" -C /opt/microsoft/powershell/7 &&
+       sudo chmod +x /opt/microsoft/powershell/7/pwsh &&
+       sudo ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh; then
+        rm -f "$tgz"
+    else
+        failed="$failed powershell"
+    fi
+    if [ -z "$failed" ]; then echo "exit status 0"; else echo "exit status 1: failed to install:$failed"; fi
+}
+if [ "${1:-}" = --install-tools ]; then
+    install_tools "$2" > "$2/claude-sandbox-tools.log" 2>&1
+    tail -n 1 "$2/claude-sandbox-tools.log" > "$2/claude-sandbox-tools.done"
+    exit 0
+fi
 c="$HOME/.claude"
 in=/tmp/claude-hist   # host history staged here by `sbx cp` (files arrive owned by root)
 
@@ -54,43 +94,23 @@ EOF
     } >> "$c/CLAUDE.md"
 fi
 
-# Install Chromium (Debian) and PowerShell (Microsoft's apt repo), which the image lacks. This
-# takes about a minute, so it runs in the background while Claude starts; CLAUDE.md tells Claude
-# to wait before using either. The install holds a lock (taken here, before it starts, so there's
-# no window where Claude could see it free) and writes its result to the marker even on failure.
+# Install Chromium and PowerShell, which the image lacks. This takes about a minute, so it runs
+# in the background (this script again, with --install-tools) while Claude starts; CLAUDE.md
+# tells Claude to wait before using either. The install holds a lock (taken here, before it
+# starts, so there's no window where Claude could see it free) and writes its result to the
+# marker even on failure.
 tools="${CLAUDE_SANDBOX_TOOLS_DIR:-/tmp}"
 if ! command -v chromium >/dev/null 2>&1 || ! command -v pwsh >/dev/null 2>&1; then
     rm -f "$tools/claude-sandbox-tools.done"
     exec 9>"$tools/claude-sandbox-tools.lock"
     flock 9
-    # shellcheck disable=SC2016  # expanded by the inner bash
-    setsid nohup bash -c '
-        log="$1/claude-sandbox-tools.log"
-        {
-            . /etc/os-release
-            deb="$1/packages-microsoft-prod.deb"
-            curl -fsSL -o "$deb" "https://packages.microsoft.com/config/debian/$VERSION_ID/packages-microsoft-prod.deb" &&
-                sudo dpkg -i "$deb" || echo "claude-sandbox: could not add the Microsoft apt repo"
-            sudo apt-get update
-            # PowerShell'"'"'s post-install runs add-shell, which fails when /etc/shells is missing
-            # (as in the sbx image) and leaves the package half-installed, blocking later installs.
-            [ -e /etc/shells ] || printf "/bin/sh\n/bin/bash\n" | sudo tee /etc/shells >/dev/null
-            # One at a time, so a PowerShell failure (say, the repo above) still leaves Chromium.
-            failed=""
-            for pkg in chromium powershell; do
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$pkg" ||
-                    failed="$failed $pkg"
-            done
-            if [ -z "$failed" ]; then echo "exit status 0"; else echo "exit status 1: failed to install:$failed"; fi
-        } >"$log" 2>&1
-        tail -n 1 "$log" > "$1/claude-sandbox-tools.done"
-    ' _ "$tools" >/dev/null 2>&1 &
+    setsid nohup bash "$0" --install-tools "$tools" >/dev/null 2>&1 &
     exec 9>&-   # the background install keeps the lock until it exits
     cat >> "$c/CLAUDE.md" <<EOF
 
 # Chromium and PowerShell
 
-\`chromium\` and \`pwsh\` are being installed in the background as this session starts. Before the first use of either, wait for the install (it blocks until done, at most about two minutes): \`flock $tools/claude-sandbox-tools.lock cat $tools/claude-sandbox-tools.done\` (\`exit status 0\` means success; the full log is \`$tools/claude-sandbox-tools.log\`).
+\`chromium\` and \`pwsh\` are being installed in the background as this session starts. Before the first use of either, wait for the install (it blocks until done, usually about a minute): \`flock $tools/claude-sandbox-tools.lock cat $tools/claude-sandbox-tools.done\` (\`exit status 0\` means success; the full log is \`$tools/claude-sandbox-tools.log\`).
 EOF
 fi
 

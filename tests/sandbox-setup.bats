@@ -68,7 +68,8 @@ MD
     grep -q 'only copy' "$HOME/.claude/CLAUDE.md"
 }
 
-# Stands in sudo (logging each command) and curl; $1 is the package whose install fails, if any.
+# Stands in for sudo (logging each command), apt-cache and curl; $1 is the step that fails, if any:
+# chromium (the apt install) or powershell (the release download).
 stub_installer() {
     # sandbox-setup.sh runs only inside the (Linux) sandbox; macOS has neither of these.
     command -v flock >/dev/null && command -v setsid >/dev/null || skip "needs flock and setsid (Linux)"
@@ -76,18 +77,27 @@ stub_installer() {
     # A PATH holding only what the script needs, so a real chromium or pwsh on this machine is hidden.
     local sys="$BATS_TEST_TMPDIR/sys" cmd
     mkdir -p "$sys"
-    for cmd in bash sh awk cat chmod cp env flock grep jq mkdir mv nohup rm setsid tail timeout; do
+    for cmd in bash sh awk cat chmod cp env flock grep jq mkdir mv nohup rm sed setsid sleep sort tail timeout uname; do
         ln -s "$(command -v "$cmd")" "$sys/$cmd"
     done
     PATH="$BATS_TEST_TMPDIR/bin:$sys"
+    local fail="${1:-none}"
     cat > "$BATS_TEST_TMPDIR/bin/sudo" <<SH
 #!/bin/sh
 echo "\$*" >> "$BATS_TEST_TMPDIR/sudo.log"
-case "\$*" in *"install -y --no-install-recommends ${1:-none}") exit 1 ;; esac
+case "\$*" in *"apt-get install"*" $fail"*) exit 1 ;; esac
 exit 0
 SH
-    printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/curl"
-    chmod +x "$BATS_TEST_TMPDIR/bin/sudo" "$BATS_TEST_TMPDIR/bin/curl"
+    printf '#!/bin/sh\nprintf "libicu-dev\\nlibicu74\\nlibicu76\\n"\n' > "$BATS_TEST_TMPDIR/bin/apt-cache"
+    cat > "$BATS_TEST_TMPDIR/bin/curl" <<SH
+#!/bin/sh
+echo "\$*" >> "$BATS_TEST_TMPDIR/curl.log"
+case "\$*" in
+    *-fsSI*) echo "location: https://github.com/PowerShell/PowerShell/releases/tag/v7.7.0" ;;
+    *) [ "$fail" != powershell ] ;;
+esac
+SH
+    chmod +x "$BATS_TEST_TMPDIR/bin/sudo" "$BATS_TEST_TMPDIR/bin/apt-cache" "$BATS_TEST_TMPDIR/bin/curl"
 }
 
 wait_for_tools() { flock "$CLAUDE_SANDBOX_TOOLS_DIR/claude-sandbox-tools.lock" cat "$CLAUDE_SANDBOX_TOOLS_DIR/claude-sandbox-tools.done"; }
@@ -97,15 +107,24 @@ wait_for_tools() { flock "$CLAUDE_SANDBOX_TOOLS_DIR/claude-sandbox-tools.lock" c
     bash "$REPO_ROOT/sandbox-setup.sh" unset unset unset 2>/dev/null
     grep -q "flock $CLAUDE_SANDBOX_TOOLS_DIR/claude-sandbox-tools.lock" "$HOME/.claude/CLAUDE.md"
     [ "$(wait_for_tools)" = "exit status 0" ]
-    grep -q 'install -y --no-install-recommends chromium$' "$BATS_TEST_TMPDIR/sudo.log"
-    grep -q 'install -y --no-install-recommends powershell$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q '^apt-get update$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q 'install -y --no-install-recommends chromium libicu76$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q 'releases/download/v7.7.0/powershell-7.7.0-linux-' "$BATS_TEST_TMPDIR/curl.log"
+    grep -q '^ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh$' "$BATS_TEST_TMPDIR/sudo.log"
 }
 
-@test "a failed PowerShell install still installs Chromium and reports the failure" {
+@test "a failed PowerShell download still installs Chromium and reports the failure" {
     stub_installer powershell
     bash "$REPO_ROOT/sandbox-setup.sh" unset unset unset 2>/dev/null
     [ "$(wait_for_tools)" = "exit status 1: failed to install: powershell" ]
-    grep -q 'install -y --no-install-recommends chromium$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q 'install -y --no-install-recommends chromium' "$BATS_TEST_TMPDIR/sudo.log"
+}
+
+@test "a failed Chromium install still installs PowerShell and reports the failure" {
+    stub_installer chromium
+    bash "$REPO_ROOT/sandbox-setup.sh" unset unset unset 2>/dev/null
+    [ "$(wait_for_tools)" = "exit status 1: failed to install: chromium" ]
+    grep -q '/usr/bin/pwsh$' "$BATS_TEST_TMPDIR/sudo.log"
 }
 
 @test "skips the install when both are already there" {
