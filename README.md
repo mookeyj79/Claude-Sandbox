@@ -35,7 +35,7 @@ Keep these files and `skills/` together, as the clone leaves them: the wrappers 
 
 ### You do this once
 
-First check the [requirements](#1-requirements). On Windows, that means Windows Hypervisor Platform must be enabled.
+First check the [requirements](#1-requirements). On Windows, that means Windows Hypervisor Platform must be enabled. On Linux, it means KVM must be available.
 
 **Windows (PowerShell):**
 
@@ -59,16 +59,69 @@ if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force | Out
 Add-Content $PROFILE "`n. $PWD\Claude-Sandbox\claude-sandbox.ps1"
 ```
 
-**Linux / macOS (bash or zsh):** install `sbx` using [Docker's instructions](https://docs.docker.com/ai/sandboxes/install/). Install Git and the [GitHub CLI](https://cli.github.com/) too, then:
+**Linux:** step 1 depends on your package manager. The rest is the same everywhere.
+
+*1a. `apt`: Ubuntu 24.04+ or Debian 13*
 
 ```bash
-gh auth login
-sbx login
-sbx policy init balanced
-sbx secret set github -t "$(gh auth token)"
+# Git, and the GitHub CLI from GitHub's own repository. The gh in Ubuntu's and Debian's
+# repositories (2.45/2.46) no longer works with GitHub's API.
+sudo apt update && sudo apt install -y git curl
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+sudo apt update && sudo apt install -y gh
+
+# sbx on Ubuntu: from Docker's apt repository, so `apt upgrade` keeps it current
+curl -fsSL https://get.docker.com | sudo REPO_ONLY=1 sh
+sudo apt install -y docker-sbx
+
+# sbx on Debian: Docker's repository has no sbx for Debian, so install the release package instead
+deb=DockerSandboxes-linux-$(dpkg --print-architecture)-ubuntu2404.deb
+curl -fLo "/tmp/$deb" "https://github.com/docker/sbx-releases/releases/latest/download/$deb"
+sudo apt install -y "/tmp/$deb"
+```
+
+*1b. `dnf`: Fedora, or RHEL 9+ and its rebuilds (Rocky, Alma)*
+
+```bash
+# Git and the GitHub CLI. On Fedora, gh is in the distro's repositories:
+sudo dnf install -y git gh
+# On RHEL, Rocky or Alma, it isn't, so add GitHub's repository instead:
+sudo dnf install -y git 'dnf-command(config-manager)'
+sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+sudo dnf install -y gh
+
+# sbx: Docker publishes an .rpm but no dnf repository
+sudo dnf install -y "https://github.com/docker/sbx-releases/releases/latest/download/DockerSandboxes-linux-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')-rockylinux8.rpm"
+```
+
+*2–5. Every distro*
+
+```bash
+# 2. Let your user start VMs: sbx runs each sandbox as a KVM microVM
+sudo usermod -aG kvm "$USER"                 # then log out and back in (or reboot)
+sbx version                                  # 0.51.0 or newer
+
+# 3. Sign in (each opens a browser)
+gh auth login                                # GitHub, on your machine
+sbx login                                    # Docker
+
+# 4. Sandbox settings, shared by every sandbox
+sbx policy init balanced                     # network policy
+sbx secret set github -t "$(gh auth token)"  # lets sandboxes git push and use gh
+
+# 5. Get the scripts and load the wrapper in every new terminal
 git clone https://github.com/mookeyj79/Claude-Sandbox.git
 echo "source $PWD/Claude-Sandbox/claude-sandbox.sh" >> ~/.bashrc   # or ~/.zshrc
 ```
+
+Other distros (Arch, openSUSE, Debian 12, ...): see [Install `sbx`](#2-install-sbx) for the tarball.
+
+**macOS (Sonoma 14+, Apple silicon):** `brew trust docker/tap && brew install docker/tap/sbx git gh`, then steps 3–5 above.
 
 **Then, in a new terminal:**
 
@@ -98,7 +151,7 @@ Setup is done. Check it worked with [Verify it's working](#verify-its-working). 
 | Your GitHub token changes (new `gh auth login`, expired or rotated token) | `sbx secret set github -t "$(gh auth token)"` |
 | You want a newer version of these scripts | `git pull` in the cloned folder, then open a new terminal |
 | A site you need is blocked | `sbx policy allow network <host>` |
-| `sbx` itself is out of date | `winget upgrade Docker.sbx` |
+| `sbx` itself is out of date | See [Updating](#updating) |
 
 ---
 
@@ -118,17 +171,72 @@ If it isn't, run this from an **elevated** PowerShell and reboot:
 Enable-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform -All
 ```
 
-**Linux** (Ubuntu 24.04+, with KVM) and **macOS**: see https://docs.docker.com/ai/sandboxes/install/
+**Linux**, 64-bit Intel/AMD or Arm, with **KVM**. Docker supports Ubuntu 24.04+ and publishes packages for Ubuntu and Rocky Linux 8. The steps below also cover Debian 13, Fedora and RHEL 9+ (and Rocky, Alma), which use those same packages. If Linux itself runs in a VM, that VM needs nested virtualization. Check KVM:
 
-You don't need Docker Desktop. You do need [Git](https://git-scm.com/), to clone the scripts (`winget install -h Git.Git`), and the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`, for [GitHub access](#5-github-access) (`winget install -h GitHub.cli`).
+```bash
+ls -l /dev/kvm          # must exist
+lsmod | grep kvm        # kvm_intel, kvm_amd or kvm (Arm)
+```
+
+If `/dev/kvm` is missing, turn on virtualization (Intel VT-x / AMD-V, sometimes called SVM) in the BIOS/UEFI. Then add yourself to the `kvm` group, and log out and back in so it applies:
+
+```bash
+sudo usermod -aG kvm "$USER"
+id -nG | grep -w kvm    # after logging back in: prints your groups, including kvm
+```
+
+**macOS:** Sonoma 14 or newer, on Apple silicon.
+
+You don't need Docker Desktop or Docker Engine. You do need [Git](https://git-scm.com/), to clone the scripts, and the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`, for [GitHub access](#5-github-access). The [quick start](#you-do-this-once) installs both for each OS. On Ubuntu and Debian, install `gh` from GitHub's repository as shown there: the `gh` in the distro's own repositories (2.45/2.46) no longer works with GitHub's API.
 
 ### 2. Install `sbx`
+
+You need **0.51.0 or newer** for Claude to read [earlier sessions](#earlier-sessions). Check with `sbx version` after installing.
+
+**Windows:**
 
 ```powershell
 winget install -h Docker.sbx
 ```
 
-The install is per-user and needs no admin rights. **Close every terminal window** and open a new one so `sbx` is on your PATH, then check it with `sbx version`. You need **0.51.0 or newer** for Claude to read [earlier sessions](#earlier-sessions).
+The install is per-user and needs no admin rights. **Close every terminal window** and open a new one so `sbx` is on your PATH.
+
+**Ubuntu 24.04+ (`apt`):** from Docker's apt repository. The script only adds the repository; it doesn't install Docker Engine.
+
+```bash
+curl -fsSL https://get.docker.com | sudo REPO_ONLY=1 sh
+sudo apt install -y docker-sbx
+```
+
+**Debian 13 (`apt`):** Docker's Debian repository doesn't carry `sbx`, but its Ubuntu 24.04 package installs on Debian 13. It needs glibc 2.39, so it doesn't work on Debian 12: use the tarball below there.
+
+```bash
+deb=DockerSandboxes-linux-$(dpkg --print-architecture)-ubuntu2404.deb
+curl -fLo "/tmp/$deb" "https://github.com/docker/sbx-releases/releases/latest/download/$deb"
+sudo apt install -y "/tmp/$deb"
+```
+
+**Fedora, RHEL 9+, Rocky, Alma (`dnf`):** Docker publishes an `.rpm` (built on Rocky Linux 8) but no dnf repository, so `dnf upgrade` won't update it. See [Updating](#updating).
+
+```bash
+sudo dnf install -y "https://github.com/docker/sbx-releases/releases/latest/download/DockerSandboxes-linux-$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')-rockylinux8.rpm"
+```
+
+**Any other Linux (tarball):** installs into `~/.docker/sbx` without root. Docker doesn't test these distros. The package needs `dbus-daemon`, so install it with your package manager if it isn't already there.
+
+```bash
+arch=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+mkdir -p /tmp/sbx && curl -fL "https://github.com/docker/sbx-releases/releases/latest/download/DockerSandboxes-linux-$arch.tar.gz" | tar xz -C /tmp/sbx
+/tmp/sbx/docker-sbx/install.sh
+echo 'export PATH="$HOME/.docker/sbx/bin:$PATH"' >> ~/.bashrc   # or ~/.zshrc; then open a new terminal
+```
+
+**macOS:**
+
+```bash
+brew trust docker/tap
+brew install docker/tap/sbx
+```
 
 ### 3. Sign in to Docker
 
@@ -303,7 +411,11 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 
 - **Skills** update automatically: the wrapper runs `sbx skills update` in the background at most once a day. To update now: `sbx skills update`.
 - **Claude Code** updates inside each sandbox before it starts, so a new session is already on the latest version. If the update fails, Claude starts on the image's version.
-- **`sbx`:** `winget upgrade Docker.sbx`
+- **`sbx`:**
+  - Windows: `winget upgrade Docker.sbx`
+  - Ubuntu: `sudo apt update && sudo apt upgrade docker-sbx`
+  - Debian, Fedora, RHEL, tarball: these installs have no repository to update from, so run the same [install command](#2-install-sbx) again. It downloads the latest release.
+  - macOS: `brew upgrade sbx`
 - **These scripts:** run `git pull` in the folder you cloned. The next `claude` run uses the new versions (open a new terminal first, so the wrapper reloads).
 
 ## Limitations
@@ -318,14 +430,16 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 
 | Problem | Fix |
 |---|---|
-| `sbx: command not found` after installing | Close **all** terminal windows and open a new one. |
+| `sbx: command not found` after installing | Close **all** terminal windows and open a new one. With the Linux tarball, check that `~/.docker/sbx/bin` is on your `PATH`. |
+| Linux: sandbox won't start, with an error about `/dev/kvm` or permission denied | Check [KVM](#1-requirements): `/dev/kvm` must exist, and `id -nG` must list `kvm`. After `usermod -aG kvm`, log out and back in. |
+| Ubuntu/Debian: `gh` fails with API errors | It's the distro's `gh` 2.45/2.46. Install it from GitHub's repository, as in the [quick start](#you-do-this-once). |
 | A fix you pulled doesn't seem to apply | The wrapper's messages show its commit, as in `claude-sandbox (3fd4520): starting ...`. Compare it with `git -C <cloned folder> log -1 --format=%h`. If they differ, open a new terminal so the wrapper reloads. If they match and the commit is old, run `git pull` in that folder. |
-| `claude` starts normal Claude | `Get-Command claude` shows `Application`, so the wrapper isn't loaded. Check the profile line, including the leading `. `. |
+| `claude` starts normal Claude | The wrapper isn't loaded: `Get-Command claude` shows `Application`, or `type claude` shows a file path. Check the profile line, including the leading `. ` (PowerShell), or the `source` line in `~/.bashrc` / `~/.zshrc`. Then open a new terminal. |
 | `error: not signed in to Docker` | `sbx login` |
 | `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host: `sbx secret set github -t "$(gh auth token)"`, then exit and restart `claude`. If the token itself expired, run `gh auth login` first. |
 | Requests to a site fail or hang | `sbx policy approval ls`, or `sbx policy allow network <host>` |
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
-| `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and upgrade if it's older (`winget upgrade Docker.sbx` on Windows). |
+| `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and [upgrade](#updating) if it's older. |
 | `couldn't save history from <name>` | The sandbox was kept so its sessions aren't lost, and each `claude` run retries the save. If it keeps failing and you don't need those sessions, run `sbx rm --force <name>`. |
 | `couldn't install skill <name>, will retry next run` | Claude still starts without that skill, and the next run tries again. To install it now, run the `sbx skills add ...` command printed in the message. If it keeps failing, check `sbx login` and that GitHub is reachable. |
 | `--resume` shows no sessions | Check that the history store has a folder for this project and that the `sandbox/` folder is next to the wrapper. |
@@ -335,8 +449,13 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 ## Uninstall
 
 1. Remove the wrapper line from your PowerShell profile or `~/.bashrc`.
-2. `sbx reset` deletes all sandboxes, secrets and the network policy. Then run `winget uninstall Docker.sbx`.
-3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\`), `~/.claude-sandbox-skills-updated`, `~/.claude-sandbox-skills-added` and the folder you cloned.
+2. `sbx reset` deletes all sandboxes, secrets and the network policy. Then uninstall `sbx`:
+   - Windows: `winget uninstall Docker.sbx`
+   - `apt`: `sudo apt remove docker-sbx`
+   - `dnf`: `sudo dnf remove docker-sbx`
+   - Tarball: `rm -rf ~/.docker/sbx`, and remove the `PATH` line from `~/.bashrc`
+   - macOS: `brew uninstall sbx`
+3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\` on Windows, `~/.local/share/claude-sandbox/` on Linux/macOS), `~/.claude-sandbox-skills-updated`, `~/.claude-sandbox-skills-added` and the folder you cloned.
 
 ## Issues
 
