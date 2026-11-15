@@ -10,15 +10,16 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
-- **Chromium and PowerShell (`pwsh`) installed** in every sandbox, in the background while Claude starts (about a minute). Claude is told to wait for the install before using them.
+- **Chromium and PowerShell (`pwsh`) installed** in every sandbox before Claude starts, alongside the Claude Code update (about a minute). If an install fails, the launch says so and how to retry.
 - **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/clean-repo`](skills/clean-repo/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
 | File | Purpose |
 |---|---|
 | `claude-sandbox.ps1` | PowerShell wrapper (Windows) |
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
-| `sandbox-setup.sh` | Runs inside each new sandbox to restore history, point Claude at earlier sessions, install Chromium and PowerShell, update Claude Code and apply defaults |
-| `statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
+| `sandbox/` | Everything that runs inside the sandbox. The wrappers copy it into each new sandbox. |
+| `sandbox/setup.sh` | Prepares each new sandbox: restores history, points Claude at earlier sessions, installs Chromium and PowerShell, updates Claude Code and applies defaults. The defaults are set here. |
+| `sandbox/statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
 | `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `tests/check.sh` runs ShellCheck and bats as CI does; `Invoke-Pester tests` (Pester 5) on Windows |
 | `docs/sbx-cli.md` | Real `sbx` output the wrappers depend on, for working on them from inside a sandbox, where `sbx` isn't available |
@@ -249,11 +250,11 @@ $env:CLAUDE_SANDBOX_EFFORT          = 'medium'    # low | medium | high | ...
 $env:CLAUDE_SANDBOX_PERMISSION_MODE = 'auto'      # auto | bypassPermissions | default | acceptEdits | plan
 ```
 
-`unset` keeps the sandbox's own default (bash also accepts an empty string). For the permission mode, that default is `bypassPermissions`.
+`unset` keeps the sandbox's own default (bash also accepts an empty string). For the permission mode, that default is `bypassPermissions`. The defaults themselves are at the top of `sandbox/setup.sh`.
 
 ### Earlier sessions
 
-Claude can look things up in earlier chats, including ones from other projects. Each sandbox gets two read-only mounts, and `sandbox-setup.sh` adds a note to the sandbox's `~/.claude/CLAUDE.md` saying where they are:
+Claude can look things up in earlier chats, including ones from other projects. Each sandbox gets two read-only mounts, and `sandbox/setup.sh` adds a note to the sandbox's `~/.claude/CLAUDE.md` saying where they are:
 
 | Path in the sandbox | Contents |
 |---|---|
@@ -274,7 +275,7 @@ Each `claude` run:
 
 1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them. If the save fails, it warns you and keeps the sandbox to retry on the next run.
 2. **Creates** a sandbox named `claude-<folder>-<hash>-<id>`. The hash of the full path keeps `D:\Dev\api` and `D:\Work\api` apart. The random id lets several windows share a folder.
-3. **Restores** that folder's history, mounts earlier sessions read-only, updates Claude Code and applies your defaults, using `sandbox-setup.sh`.
+3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, installs Chromium and PowerShell, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
 4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
 5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
 
@@ -327,7 +328,8 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and upgrade if it's older (`winget upgrade Docker.sbx` on Windows). |
 | `couldn't save history from <name>` | The sandbox was kept so its sessions aren't lost, and each `claude` run retries the save. If it keeps failing and you don't need those sessions, run `sbx rm --force <name>`. |
 | `couldn't install skill <name>, will retry next run` | Claude still starts without that skill, and the next run tries again. To install it now, run the `sbx skills add ...` command printed in the message. If it keeps failing, check `sbx login` and that GitHub is reachable. |
-| `--resume` shows no sessions | Check that the history store has a folder for this project and that `sandbox-setup.sh` is next to the wrapper. |
+| `--resume` shows no sessions | Check that the history store has a folder for this project and that the `sandbox/` folder is next to the wrapper. |
+| `setting up <name> failed` or `couldn't copy setup files` | Claude wasn't started, because the sandbox wasn't fully prepared. The lines above the message say what failed. Run `claude` again; if it keeps failing, check that `sandbox/` is next to the wrapper (`git pull` brings it back). |
 | Anything else | `sbx diagnose`. As a last resort, `sbx reset` deletes all sandboxes **and your stored login**. Saved history isn't affected. |
 
 ## Uninstall

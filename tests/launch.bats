@@ -23,16 +23,36 @@ calls_matching() { sbx_calls | grep -E "$1" || true; }
     run claude --resume
     [ "$status" -eq 0 ]
     [[ "$(calls_matching '^create ')" == "create --name $key-"*" claude $project "* ]]
-    [[ "$(calls_matching '^exec ')" == *"bash /tmp/claude-sandbox-setup.sh opus medium auto"* ]]
+    [[ "$(calls_matching '^exec ')" == *"bash /tmp/claude-sandbox/setup.sh - - -"* ]]
     [[ "$(calls_matching '^exec ')" == *" claude --resume" ]]
-    [ -n "$(calls_matching "^cp .*/$key $key-[a-z0-9]{4}:/tmp/claude-hist\$")" ]
+    [ -n "$(calls_matching "^cp .*/sandbox $key-[a-z0-9]{4}:/tmp/claude-sandbox\$")" ]
+    [ -n "$(calls_matching "^cp .*/$key $key-[a-z0-9]{4}:/tmp/claude-sandbox/history\$")" ]
     [ -n "$(calls_matching "^rm --force $key-")" ]
     [ -z "$(ls "$FAKE_SBX_DIR/sandboxes")" ]
 }
 
-@test "model, effort and permission mode come from the environment" {
-    CLAUDE_SANDBOX_MODEL=sonnet CLAUDE_SANDBOX_EFFORT= CLAUDE_SANDBOX_PERMISSION_MODE=bypassPermissions run claude
-    [[ "$(calls_matching '^exec ')" == *"setup.sh sonnet  bypassPermissions"* ]]
+@test "model, effort and permission mode are passed on as set, set-but-empty, or not set" {
+    unset CLAUDE_SANDBOX_PERMISSION_MODE
+    CLAUDE_SANDBOX_MODEL=sonnet CLAUDE_SANDBOX_EFFORT= run claude
+    [[ "$(calls_matching '^exec ')" == *"setup.sh =sonnet = -"* ]]
+}
+
+@test "doesn't start Claude in a sandbox whose setup failed" {
+    touch "$FAKE_SBX_DIR/setup-fails"
+    run claude
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"ERROR: setting up $key-"*"failed (see above), so Claude wasn't started"* ]]
+    [ -z "$(calls_matching ' claude$')" ]
+}
+
+@test "doesn't start Claude if the setup files can't be copied in" {
+    PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+    mkdir -p "$BATS_TEST_TMPDIR/bin"
+    printf '#!/bin/sh\n[ "$1" = cp ] && exit 1\nexec "%s" "$@"\n' "$REPO_ROOT/tests/fake-sbx/sbx" > "$BATS_TEST_TMPDIR/bin/sbx"
+    chmod +x "$BATS_TEST_TMPDIR/bin/sbx"
+    run claude
+    [[ "$output" == *"ERROR: couldn't copy setup files and history into $key-"* ]]
+    [ -z "$(calls_matching '^exec ')" ]
 }
 
 @test "earlier sessions are mounted read-only unless turned off" {

@@ -13,6 +13,7 @@ All state lives under $FAKE_SBX_DIR:
                              exists: already installed, so sbx would ask before overwriting
   skill-<owner>__<repo>      the same, for `sbx skills add <owner>/<repo>` without --skill
   create-fails-with-mounts   if present, `sbx create` with extra mounts fails
+  setup-fails                if present, running sandbox/setup.sh fails (and creates nothing)
   ls-plain                   if present, `sbx ls` prints statuses without the leading dot
 """
 import json
@@ -136,7 +137,11 @@ def main(argv):
         rest = [a for a in args if a not in ("-i", "-it")]
         name = rest[0]
         # The real setup script always creates ~/.claude/projects; the fake does the same.
-        if rest[1:3] == ["bash", "/tmp/claude-sandbox-setup.sh"]:
+        # (sandbox/setup.sh itself is tested in tests/setup.bats.)
+        if rest[1:3] == ["bash", "/tmp/claude-sandbox/setup.sh"]:
+            if os.path.exists(os.path.join(STATE, "setup-fails")):
+                print("claude-sandbox: couldn't restore session history", file=sys.stderr)
+                return 1
             os.makedirs(os.path.join(SANDBOXES, name, "fs", "home/agent/.claude/projects"), exist_ok=True)
         return int(read(os.path.join(SANDBOXES, name, "exec-exit"), "0"))
     if cmd == "stop":

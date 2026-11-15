@@ -8,10 +8,9 @@
 #   - Session history is saved on the host and restored into the next sandbox, so --resume works.
 #   - Several windows (same or different folders) each get their own sandbox.
 #
-# Defaults (override per shell, or set to 'unset' to keep the sandbox's own default):
-#   $env:CLAUDE_SANDBOX_MODEL            = 'opus'
-#   $env:CLAUDE_SANDBOX_EFFORT           = 'medium'
-#   $env:CLAUDE_SANDBOX_PERMISSION_MODE  = 'auto'     # or 'bypassPermissions'
+# Defaults: $env:CLAUDE_SANDBOX_MODEL, $env:CLAUDE_SANDBOX_EFFORT and
+# $env:CLAUDE_SANDBOX_PERMISSION_MODE override the ones in sandbox/setup.sh; set one to 'unset'
+# to keep the sandbox's own setting.
 #
 # Earlier sessions from every project are mounted read-only so Claude can look things up in them.
 #   $env:CLAUDE_SANDBOX_SHARE_HISTORY    = '0'        # keep them out (this folder's own sessions are still restored)
@@ -102,7 +101,7 @@ function Add-ClaudeSandboxSkill {
 # ---- History store ------------------------------------------------------------------------
 # Session history lives on the host, one folder per project, so --resume works across
 # throwaway sandboxes. Callers only need: Get-ClaudeSandboxProjectKey, Get-ClaudeSandboxNewName,
-# Push-ClaudeSandboxHistory, Close-ClaudeSandbox (and Move-ClaudeSandboxLegacyHistory, for now).
+# Initialize-ClaudeSandbox, Close-ClaudeSandbox (and Move-ClaudeSandboxLegacyHistory, for now).
 # The sandbox name carries the project key, so a leftover sandbox can be traced to its folder.
 
 function Get-ClaudeSandboxProjectKey {
@@ -148,17 +147,51 @@ function Get-ClaudeSandboxProject {
     if ($Sandbox -cmatch '^(claude-.+-[0-9a-f]{8})(-[a-z0-9]{4})?$') { $Matches[1] } else { $null }
 }
 
-function Push-ClaudeSandboxHistory {
-    # Copy the project's saved history into a new sandbox, where sandbox-setup.sh restores it.
+# Where a new sandbox gets this repo's sandbox/ folder, with the project's history in history/.
+# sandbox/setup.sh finds everything relative to itself, so this is the one path both sides share.
+$script:ClaudeSandboxStage = '/tmp/claude-sandbox'
+
+function ConvertTo-ClaudeSandboxSetting {
+    # One user setting for sandbox/setup.sh: '-' if the variable isn't set, else '=<value>' (so
+    # "set but empty", possible from PowerShell 7.5, survives as '='). Never '' itself:
+    # PowerShell drops empty arguments to native commands, which would shift the rest along.
+    param([AllowNull()][string]$Value, [bool]$IsSet)
+    if ($IsSet) { "=$Value" } else { '-' }
+}
+
+function Initialize-ClaudeSandbox {
+    # Prepare a new sandbox: copy in sandbox/ and the project's history, then run setup once.
+    # Returns $false, having said why, if any step failed; Claude shouldn't start in a
+    # half-prepared sandbox.
     param([string]$Sandbox)
     $store = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProject $Sandbox)
     New-Item -ItemType Directory -Force -Path $store | Out-Null
-    & sbx cp $store "${Sandbox}:/tmp/claude-hist" *> $null
+    # sandbox/ first: copied to a path that doesn't exist yet, it lands as the folder itself.
+    & sbx cp (Join-Path $script:ClaudeSandboxDir 'sandbox') "${Sandbox}:$($script:ClaudeSandboxStage)" *> $null
+    $ok = $LASTEXITCODE -eq 0
+    if ($ok) {
+        & sbx cp $store "${Sandbox}:$($script:ClaudeSandboxStage)/history" *> $null
+        $ok = $LASTEXITCODE -eq 0
+    }
+    if (-not $ok) {
+        Write-Host "$($script:ClaudeSandboxTag): ERROR: couldn't copy setup files and history into $Sandbox, so Claude wasn't started. Run claude again to retry." -ForegroundColor Red
+        return $false
+    }
+    $settings = foreach ($v in 'CLAUDE_SANDBOX_MODEL', 'CLAUDE_SANDBOX_EFFORT', 'CLAUDE_SANDBOX_PERMISSION_MODE') {
+        $item = Get-Item "env:$v" -ErrorAction SilentlyContinue
+        ConvertTo-ClaudeSandboxSetting -Value $item.Value -IsSet ($null -ne $item)
+    }
+    & sbx exec $Sandbox bash "$($script:ClaudeSandboxStage)/setup.sh" @settings | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "$($script:ClaudeSandboxTag): ERROR: setting up $Sandbox failed (see above), so Claude wasn't started. Run claude again to retry." -ForegroundColor Red
+        return $false
+    }
+    return $true
 }
 
 function Save-ClaudeSandboxHistory {
     # Copy a sandbox's session history into the store for its project. Returns $false if anything
-    # went wrong. A missing projects/ folder counts as a failure: sandbox-setup.sh always creates
+    # went wrong. A missing projects/ folder counts as a failure: sandbox/setup.sh always creates
     # it, so missing means the copy didn't work.
     param([string]$Sandbox)
     $store = Join-Path $script:ClaudeSandboxStore (Get-ClaudeSandboxProject $Sandbox)
@@ -236,14 +269,7 @@ function claude {
     Move-ClaudeSandboxLegacyHistory $path
     $name = Get-ClaudeSandboxNewName (Get-ClaudeSandboxProjectKey $path)
 
-    # Unset: the default. Set but empty (PowerShell 7.5+ can hold that): 'unset', meaning leave
-    # the sandbox's own setting. Never pass '' itself: PowerShell drops empty arguments to
-    # native commands, which would shift the rest along.
-    $model  = if ($null -eq $env:CLAUDE_SANDBOX_MODEL)           { 'opus' }   elseif ($env:CLAUDE_SANDBOX_MODEL)           { $env:CLAUDE_SANDBOX_MODEL }           else { 'unset' }
-    $effort = if ($null -eq $env:CLAUDE_SANDBOX_EFFORT)          { 'medium' } elseif ($env:CLAUDE_SANDBOX_EFFORT)          { $env:CLAUDE_SANDBOX_EFFORT }          else { 'unset' }
-    $mode   = if ($null -eq $env:CLAUDE_SANDBOX_PERMISSION_MODE) { 'auto' }   elseif ($env:CLAUDE_SANDBOX_PERMISSION_MODE) { $env:CLAUDE_SANDBOX_PERMISSION_MODE } else { 'unset' }
-
-    # Read-only views of earlier sessions. sandbox-setup.sh tells Claude where they are.
+    # Read-only views of earlier sessions. sandbox/setup.sh tells Claude where they are.
     $mounts = @()
     if ($env:CLAUDE_SANDBOX_SHARE_HISTORY -ne '0') {
         $mounts += "${script:ClaudeSandboxStore}:/claude-history-sandbox:ro"
@@ -263,10 +289,7 @@ function claude {
     if ($LASTEXITCODE -ne 0) { $out | Write-Host; return }
 
     try {
-        Push-ClaudeSandboxHistory $name
-        & sbx cp (Join-Path $script:ClaudeSandboxDir 'sandbox-setup.sh') "${name}:/tmp/claude-sandbox-setup.sh" *> $null
-        & sbx cp (Join-Path $script:ClaudeSandboxDir 'statusline.sh') "${name}:/tmp/claude-statusline.sh" *> $null
-        & sbx exec $name bash /tmp/claude-sandbox-setup.sh $model $effort $mode
+        if (-not (Initialize-ClaudeSandbox $name)) { return }
 
         # `sbx exec`, not `sbx run`: run always adds --dangerously-skip-permissions, which overrides
         # the permission mode set in settings.json. exec runs exactly the command we give it.

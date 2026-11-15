@@ -33,16 +33,17 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
-@test "push_history copies the project's store into the sandbox" {
+@test "prepare copies sandbox/ and the project's store into the sandbox" {
     mkdir -p "$store/$key/projects/p"; echo s1 > "$store/$key/projects/p/s1.jsonl"
     make_sandbox "$box" running
-    _claude_sandbox_push_history "$box"
-    [ "$(cat "$FAKE_SBX_DIR/sandboxes/$box/fs/tmp/claude-hist/projects/p/s1.jsonl")" = s1 ]
+    _claude_sandbox_prepare "$box"
+    [ "$(cat "$FAKE_SBX_DIR/sandboxes/$box/fs/tmp/claude-sandbox/history/projects/p/s1.jsonl")" = s1 ]
+    [ -f "$FAKE_SBX_DIR/sandboxes/$box/fs/tmp/claude-sandbox/setup.sh" ]
 }
 
-@test "push_history works for a project seen for the first time" {
+@test "prepare works for a project seen for the first time" {
     make_sandbox "$box" running
-    _claude_sandbox_push_history "$box"
+    _claude_sandbox_prepare "$box"
     [ -d "$store/$key" ]
 }
 

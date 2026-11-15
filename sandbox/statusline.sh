@@ -1,46 +1,23 @@
 #!/usr/bin/env bash
 # Claude Code status line.
 # Format: model | dir | branch | ctx N% | 51.6k tok | 5h N% (reset) 7d N% (reset)
-# Reads the status line JSON on stdin. Uses jq if present, else node.
+# Reads the status line JSON on stdin; needs jq (setup.sh needs it too, so the sandbox has it).
+# STATUSLINE_NOW (epoch seconds) stands in for the clock, for tests.
 
 input=$(cat)
 
 # ---- Extract fields as one tab-separated line; "-" marks a missing value ----
-parsed=""
-if command -v jq >/dev/null 2>&1; then
-  parsed=$(printf '%s' "$input" | jq -r '[
-    (.model.display_name // .model.id // "-"),
-    (.workspace.current_dir // .cwd // "-"),
-    (.context_window.used_percentage // "-"),
-    (.context_window.total_input_tokens // "-"),
-    (.context_window.total_output_tokens // "-"),
-    (.rate_limits.five_hour.used_percentage // "-"),
-    (.rate_limits.five_hour.resets_at // "-"),
-    (.rate_limits.seven_day.used_percentage // "-"),
-    (.rate_limits.seven_day.resets_at // "-")
-  ] | map(tostring) | join("\t")' 2>/dev/null)
-elif command -v node >/dev/null 2>&1; then
-  parsed=$(printf '%s' "$input" | node -e '
-    let s = "";
-    process.stdin.on("data", d => s += d).on("end", () => {
-      let j = {};
-      try { j = JSON.parse(s); } catch (e) {}
-      const g = (f) => { try { const v = f(); return (v === undefined || v === null || v === "") ? "-" : String(v); } catch (e) { return "-"; } };
-      const out = [
-        g(() => j.model.display_name || j.model.id),
-        g(() => (j.workspace && j.workspace.current_dir) || j.cwd),
-        g(() => j.context_window.used_percentage),
-        g(() => j.context_window.total_input_tokens),
-        g(() => j.context_window.total_output_tokens),
-        g(() => j.rate_limits.five_hour.used_percentage),
-        g(() => j.rate_limits.five_hour.resets_at),
-        g(() => j.rate_limits.seven_day.used_percentage),
-        g(() => j.rate_limits.seven_day.resets_at),
-      ];
-      process.stdout.write(out.join("\t"));
-    });
-  ' 2>/dev/null)
-fi
+parsed=$(printf '%s' "$input" | jq -r '[
+  (.model.display_name // .model.id // "-"),
+  (.workspace.current_dir // .cwd // "-"),
+  (.context_window.used_percentage // "-"),
+  (.context_window.total_input_tokens // "-"),
+  (.context_window.total_output_tokens // "-"),
+  (.rate_limits.five_hour.used_percentage // "-"),
+  (.rate_limits.five_hour.resets_at // "-"),
+  (.rate_limits.seven_day.used_percentage // "-"),
+  (.rate_limits.seven_day.resets_at // "-")
+] | map(tostring) | join("\t")' 2>/dev/null)
 
 IFS=$'\t' read -r model cwd ctx tin tout five five_at week week_at <<<"$parsed"
 for v in model cwd ctx tin tout five five_at week week_at; do
@@ -70,7 +47,7 @@ compact() {
 # epoch seconds -> "2h13m" / "3d4h" / "5m" (empty if past or invalid)
 until_reset() {
   is_num "$1" || return
-  local diff=$(( ${1%%.*} - $(date +%s) )) d h m
+  local diff=$(( ${1%%.*} - ${STATUSLINE_NOW:-$(date +%s)} )) d h m
   [ "$diff" -le 0 ] && return
   d=$((diff / 86400)); h=$(((diff % 86400) / 3600)); m=$(((diff % 3600) / 60))
   if [ "$d" -gt 0 ]; then printf '%dd%dh' "$d" "$h"
