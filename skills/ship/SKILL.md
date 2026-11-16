@@ -25,11 +25,11 @@ Wait for the run on **the commit you pushed**, not the newest run on the branch.
 
 ```bash
 sha=$(git rev-parse HEAD)
-until [ "$(gh run list --commit "$sha" --json status -q length)" -gt 0 ]; do sleep 5; done
+for i in $(seq 24); do [ "$(gh run list --commit "$sha" --json status -q length)" -gt 0 ] && break; sleep 5; done
 gh pr checks <n> --watch --interval 15
 ```
 
-Run it as one Bash call with a 600000 ms timeout. A plain `sleep` before it gets blocked. If CI usually takes longer than 10 minutes, run it with `run_in_background` and wait for the notification.
+Run it as one Bash call with a 600000 ms timeout. If no run starts within those two minutes, read the workflows' `on:` triggers: path filters can skip a commit entirely, which counts as no CI. A plain `sleep` before it gets blocked. If CI usually takes longer than 10 minutes, run it with `run_in_background` and wait for the notification.
 
 Done when every check has finished. **Green** means all passed. **Red** means anything failed: get the failing lines with `gh run view --job <id> --log-failed`, then fix the problem and go back to step 1, or stop and report it. Never merge red.
 

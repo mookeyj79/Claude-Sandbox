@@ -15,3 +15,7 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created only
 ## Working on the wrappers
 
 `claude-sandbox.sh` and `claude-sandbox.ps1` implement the same behaviour twice (`docs/adr/0001-two-wrappers-not-one-launcher.md`). Run `tests/check.sh` before committing; PowerShell is tested only in CI. `sbx` isn't available in the sandbox: its real behaviour is in `docs/sbx-cli.md`, and the tests use `tests/fake-sbx`.
+
+## Skills
+
+Skills live in `skills/<name>/SKILL.md`. A skill that tidies one kind of repo artifact is named `clean-<thing>` (`clean-git`, `clean-repo`, `clean-docs`).

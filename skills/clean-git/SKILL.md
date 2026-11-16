@@ -1,7 +1,6 @@
 ---
 name: clean-git
-description: Merge outstanding PRs, then prune dead worktrees and branches.
-disable-model-invocation: true
+description: Merge outstanding PRs, then prune dead worktrees and branches. Use only when the user asks to clean up git or runs /clean-git, including as one step of a chained request.
 ---
 
 Tidy the current repo: land open PRs, then sweep away what they leave behind. Merge first so the sweep catches the branches the merges just finished.

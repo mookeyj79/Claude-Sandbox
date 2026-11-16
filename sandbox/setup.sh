@@ -84,6 +84,41 @@ EOF
     } >> "$c/CLAUDE.md"
 }
 
+# Rules for working in this sandbox, each one learned from a session that tripped on it.
+note_sandbox_rules() {
+    cat >> "$c/CLAUDE.md" <<'RULES'
+# Working in this sandbox
+
+- Git commits use the GitHub noreply identity that setup put in `~/.gitconfig`. Keep it, and never copy an author or email from `git log`: GitHub rejects pushes that publish a private email.
+- Only the project folder is mounted, and its parent is read-only. Create worktrees directly in the session scratchpad (moving one there fails across devices), and remove them before the session ends.
+- The scratchpad, `/tmp`, Docker volumes and installed tools are gone when the sandbox is recreated. Keep signing keys and other state you can't rebuild in the mounted project folder from the first build, and put venvs under `$HOME`. Paths written to `/etc/sandbox-persistent.sh` or into repo files point at a lasting location, never the scratchpad.
+- On a Windows drive mount, symlinks fail (so venvs do too), and git can fail to update refs. When it does, commit in a clone outside the mount and bring the result back as patches.
+- A non-HTTP connection the proxy blocks still opens, then returns nothing. On an empty reply from a host or port, run `curl -si http://<host>:<port>/` and read the 403 body. If it says `Blocked by local rule` for `host.docker.internal`, an old deny rule is beating the allow: point the user at https://github.com/mookeyj79/Claude-Sandbox/blob/main/NETWORK-POLICY.md.
+- `pkill -f` and `pgrep -f` patterns also match the shell running them, which kills your own command. Stop background tasks with TaskStop, or kill by PID (`ss -ltnp` finds a port's).
+RULES
+}
+
+# Commit as the GitHub account's noreply address, so a push is never rejected for publishing a
+# private email and commits never go out as the image's placeholder user. An identity that is
+# already set is left alone.
+set_git_identity() {
+    [ -n "$(git config --global user.email)" ] && return 0
+    local user id login name q='[.id, .login, (.name // .login)] | @tsv'
+    # Stock macOS, where the tests also run, has no timeout(1).
+    if command -v timeout >/dev/null 2>&1; then
+        user="$(timeout 30 gh api user --jq "$q" 2>/dev/null)" || user=""
+    else
+        user="$(gh api user --jq "$q" 2>/dev/null)" || user=""
+    fi
+    IFS=$'\t' read -r id login name <<< "$user"
+    if [ -z "$id" ] || [ -z "$login" ]; then
+        echo "claude-sandbox: WARNING: couldn't read the GitHub account, so git has no identity. Set it by hand: git config --global user.name <name>; git config --global user.email <id>+<login>@users.noreply.github.com" >&2
+        return 0
+    fi
+    git config --global user.name "$name" &&
+        git config --global user.email "$id+$login@users.noreply.github.com"
+}
+
 # ---- Tooling ------------------------------------------------------------------------------
 # Installs Chromium and PowerShell, which the image lacks. Prints "exit status 0" last on success.
 install_tools() {
@@ -186,6 +221,8 @@ fi
 restore_history || { echo "claude-sandbox: couldn't restore session history from $stage/history" >&2; exit 1; }
 dedupe_claude_md
 note_earlier_sessions
+note_sandbox_rules
+set_git_identity
 # The tooling install runs alongside the Claude Code update, and is waited for after it.
 start_tools
 update_claude

@@ -1,7 +1,6 @@
 ---
 name: clean-repo
-description: Delete leftover junk files from the working tree and tighten `.gitignore` so it stays out.
-disable-model-invocation: true
+description: Delete leftover junk files from the working tree and tighten `.gitignore` so it stays out. Use only when the user asks to clean the repo or runs /clean-repo, including as one step of a chained request.
 argument-hint: "[path to repo, default current]"
 ---
 
