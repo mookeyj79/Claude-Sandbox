@@ -17,6 +17,9 @@ setup() {
     chmod +x "$BATS_TEST_TMPDIR/bin/claude"
     # Chromium and PowerShell already present, so the background install is skipped.
     for t in chromium pwsh; do printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/$t"; chmod +x "$BATS_TEST_TMPDIR/bin/$t"; done
+    # Stand-in for `gh api user`: id, login and name, as the --jq in setup prints them.
+    printf '#!/bin/sh\nprintf "123\\tocto\\tOcto Cat\\n"\n' > "$BATS_TEST_TMPDIR/bin/gh"
+    chmod +x "$BATS_TEST_TMPDIR/bin/gh"
     PATH="$BATS_TEST_TMPDIR/bin:$PATH"
     echo '{"model":"keep-me","effortLevel":"high","permissions":{"defaultMode":"bypassPermissions"}}' > "$HOME/.claude/settings.json"
 }
@@ -209,4 +212,31 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
 @test "no earlier-session mounts: no note" {
     run_setup = = = 2>/dev/null
     ! grep -qs 'Earlier Claude sessions' "$HOME/.claude/CLAUDE.md"
+}
+
+@test "tells Claude the rules for working in the sandbox" {
+    run_setup = = = 2>/dev/null
+    grep -q '^# Working in this sandbox$' "$HOME/.claude/CLAUDE.md"
+    grep -q 'never copy an author or email from `git log`' "$HOME/.claude/CLAUDE.md"
+}
+
+@test "commits as the GitHub account's noreply address" {
+    run_setup = = = 2>/dev/null
+    [ "$(git config --global user.name)" = "Octo Cat" ]
+    [ "$(git config --global user.email)" = "123+octo@users.noreply.github.com" ]
+}
+
+@test "leaves a git identity that is already set" {
+    git config --global user.name "Someone"
+    git config --global user.email "someone@example.com"
+    run_setup = = = 2>/dev/null
+    [ "$(git config --global user.email)" = "someone@example.com" ]
+}
+
+@test "no GitHub account: setup still succeeds, and warns how to set the identity" {
+    printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/bin/gh"
+    run run_setup = = =
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"git has no identity"* ]]
+    [ -z "$(git config --global user.email)" ]
 }

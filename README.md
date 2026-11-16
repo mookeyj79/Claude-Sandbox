@@ -10,6 +10,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
+- **Commits as your GitHub noreply address**, so a push is never rejected for publishing a private email. Setup reads the account with `gh api user` and leaves an identity you already set.
 - **Chromium and PowerShell (`pwsh`) installed** in every sandbox before Claude starts, alongside the Claude Code update (about a minute). If an install fails, the launch says so and how to retry.
 - **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/clean-repo`](skills/clean-repo/SKILL.md), [`/clean-docs`](skills/clean-docs/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/ship`](skills/ship/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
 
@@ -18,7 +19,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `claude-sandbox.ps1` | PowerShell wrapper (Windows) |
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox/` | Everything that runs inside the sandbox. The wrappers copy it into each new sandbox. |
-| `sandbox/setup.sh` | Prepares each new sandbox: restores history, points Claude at earlier sessions, installs Chromium and PowerShell, updates Claude Code and applies defaults. The defaults are set here. |
+| `sandbox/setup.sh` | Prepares each new sandbox: restores history, points Claude at earlier sessions, adds the sandbox's working rules to `~/.claude/CLAUDE.md`, sets the git identity, installs Chromium and PowerShell, updates Claude Code and applies defaults. The defaults are set here. |
 | `sandbox/statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
 | `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `tests/check.sh` runs ShellCheck and bats as CI does; `Invoke-Pester tests` (Pester 5) on Windows |
@@ -384,7 +385,7 @@ Each `claude` run:
 
 1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them. If the save fails, it warns you and keeps the sandbox to retry on the next run.
 2. **Creates** a sandbox named `claude-<folder>-<hash>-<id>`. The hash of the full path keeps `D:\Dev\api` and `D:\Work\api` apart. The random id lets several windows share a folder.
-3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, installs Chromium and PowerShell, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
+3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, adds the sandbox's working rules to Claude's instructions, sets the git identity, installs Chromium and PowerShell, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
 4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
 5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
 
