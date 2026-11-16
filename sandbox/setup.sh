@@ -103,8 +103,13 @@ RULES
 # already set is left alone.
 set_git_identity() {
     [ -n "$(git config --global user.email)" ] && return 0
-    local user id login name
-    user="$(timeout 30 gh api user --jq '[.id, .login, (.name // .login)] | @tsv' 2>/dev/null)" || user=""
+    local user id login name q='[.id, .login, (.name // .login)] | @tsv'
+    # Stock macOS, where the tests also run, has no timeout(1).
+    if command -v timeout >/dev/null 2>&1; then
+        user="$(timeout 30 gh api user --jq "$q" 2>/dev/null)" || user=""
+    else
+        user="$(gh api user --jq "$q" 2>/dev/null)" || user=""
+    fi
     IFS=$'\t' read -r id login name <<< "$user"
     if [ -z "$id" ] || [ -z "$login" ]; then
         echo "claude-sandbox: WARNING: couldn't read the GitHub account, so git has no identity. Set it by hand: git config --global user.name <name>; git config --global user.email <id>+<login>@users.noreply.github.com" >&2
