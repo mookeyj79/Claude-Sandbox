@@ -1,16 +1,18 @@
 ## Agent skills
 
+The docs below are shared from the AI-Environment Home Repo, one folder up (github.com/mookeyj79/AI-Environment).
+
 ### Issue tracker
 
-Issues and specs live in this repo's GitHub Issues, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live in this repo's GitHub Issues, managed with the `gh` CLI. See `../docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Uses the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Uses the default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `../docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created only when needed. See `docs/agents/domain.md`.
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created only when needed. See `../docs/agents/domain.md`.
 
 ## Working on the wrappers
 
