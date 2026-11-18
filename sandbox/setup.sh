@@ -60,6 +60,42 @@ dedupe_claude_md() {
     ' "$c/CLAUDE.md" > "$c/CLAUDE.md.tmp" && mv "$c/CLAUDE.md.tmp" "$c/CLAUDE.md"
 }
 
+# The image's guidance is ~400 lines in every turn, most of it for cases a session rarely meets.
+# Move those "## " sections to sbx-reference.md and leave a pointer list, before the end marker,
+# naming each moved section and when to read it. A section runs to the next level 1-2 heading
+# outside a code block, or an HTML comment. The second "## Environment Persistence" is the
+# image's shorter repeat of the first. Skipped once done, or without the guidance markers.
+disclose_sbx_guidance() {
+    [ -f "$c/CLAUDE.md" ] &&
+        grep -q '^<!-- sbx:guidance end -->$' "$c/CLAUDE.md" &&
+        ! grep -q '^## Sandbox reference$' "$c/CLAUDE.md" ||
+        return 0
+    awk -v ref="$c/sbx-reference.md" '
+        BEGIN {
+            when["## Network access"] = "a request returns 403, hangs or is slow; a port must reach the host; reaching a host service; .NET Aspire"
+            when["## Git Authentication"] = "`git push` fails, or pushing a branch and opening a PR"
+            when["## Git workspace mode"] = "how commits reach the host: direct vs clone mode"
+            when["## Claude Code"] = "running `claude` inside the sandbox, its auth or permission mode"
+        }
+        /^```/ { fence = !fence }
+        !fence && (/^#{1,2} / || /^<!--/) {
+            move = 0
+            if ($0 == "## Environment Persistence" && seen_env++) move = 1
+            else if ($0 in when) { move = 1; moved[++n] = $0 }
+            if ($0 == "<!-- sbx:guidance end -->" && n) {
+                print "## Sandbox reference"
+                print ""
+                print "Moved to `~/.claude/sbx-reference.md`. Read a section there when its case comes up:"
+                print ""
+                for (i = 1; i <= n; i++) print "- **" substr(moved[i], 4) "**: " when[moved[i]] "."
+                print ""
+            }
+        }
+        move { print > ref; next }
+        { print }
+    ' "$c/CLAUDE.md" > "$c/CLAUDE.md.tmp" && mv "$c/CLAUDE.md.tmp" "$c/CLAUDE.md"
+}
+
 # Tell Claude about the read-only earlier-session mounts the wrapper added, if any.
 note_earlier_sessions() {
     local sandbox_history="${CLAUDE_SANDBOX_MOUNT_ROOT:-}/claude-history-sandbox"
@@ -220,6 +256,7 @@ fi
 
 restore_history || { echo "claude-sandbox: couldn't restore session history from $stage/history" >&2; exit 1; }
 dedupe_claude_md
+disclose_sbx_guidance
 note_earlier_sessions
 note_sandbox_rules
 set_git_identity

@@ -19,7 +19,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 | `claude-sandbox.ps1` | PowerShell wrapper (Windows) |
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox/` | Everything that runs inside the sandbox. The wrappers copy it into each new sandbox. |
-| `sandbox/setup.sh` | Prepares each new sandbox: restores history, points Claude at earlier sessions, adds the sandbox's working rules to `~/.claude/CLAUDE.md`, sets the git identity, installs Chromium and PowerShell, updates Claude Code and applies defaults. The defaults are set here. |
+| `sandbox/setup.sh` | Prepares each new sandbox: restores history, points Claude at earlier sessions, adds the sandbox's working rules to `~/.claude/CLAUDE.md` and moves the image's rarely needed guidance (network, git auth, workspace mode) to `~/.claude/sbx-reference.md` behind a pointer list, sets the git identity, installs Chromium and PowerShell, updates Claude Code and applies defaults. The defaults are set here. |
 | `sandbox/statusline.sh` | Status line (model, folder, branch, context %, tokens, rate limits), installed into each sandbox |
 | `skills/` | Skills this repo adds to every sandbox, installed by the wrappers on the first run after each one appears |
 | `tests/` | Tests for both wrappers, run against a fake `sbx` (needs Python 3): `tests/check.sh` runs ShellCheck and bats as CI does; `Invoke-Pester tests` (Pester 5) on Windows |

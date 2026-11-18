@@ -73,6 +73,41 @@ MD
     [[ "$output" == *"<!-- sbx:guidance end -->"* ]]
 }
 
+@test "moves rarely needed guidance sections to sbx-reference.md behind a pointer" {
+    cat > "$HOME/.claude/CLAUDE.md" <<'MD'
+<!-- sbx:guidance start -->
+## Environment Persistence
+first env
+## Network access
+net body
+```bash
+## not a heading
+```
+## Installing Packages
+kept packages
+## Environment Persistence
+second env
+<!-- sbx:guidance end -->
+MD
+    run_setup = = = 2>/dev/null
+    run cat "$HOME/.claude/CLAUDE.md"
+    [[ "$output" == *"first env"* ]]
+    [[ "$output" == *"kept packages"* ]]
+    [[ "$output" != *"net body"* ]]
+    [[ "$output" != *"second env"* ]]
+    [[ "$output" == *"- **Network access**: "* ]]
+    [[ "$output" != *"Git Authentication"* ]]
+    run cat "$HOME/.claude/sbx-reference.md"
+    [[ "$output" == *"net body"* ]]
+    [[ "$output" == *"## not a heading"* ]]
+    [[ "$output" == *"second env"* ]]
+    # A second run changes nothing.
+    cp "$HOME/.claude/CLAUDE.md" "$BATS_TEST_TMPDIR/once"
+    sed -i '/^# Earlier Claude sessions$/,$d; /^# Working in this sandbox$/,$d' "$HOME/.claude/CLAUDE.md"
+    run_setup = = = 2>/dev/null
+    [ "$(grep -c '^## Sandbox reference$' "$HOME/.claude/CLAUDE.md")" = 1 ]
+}
+
 @test "keeps the CLAUDE_ENV_FILE warning when it's the only copy" {
     printf '%s\n' '### Shell Completions Must NOT Be in CLAUDE_ENV_FILE' 'only copy' > "$HOME/.claude/CLAUDE.md"
     run_setup = = = 2>/dev/null
