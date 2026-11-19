@@ -103,7 +103,9 @@ MD
     [[ "$output" == *"second env"* ]]
     # A second run changes nothing.
     cp "$HOME/.claude/CLAUDE.md" "$BATS_TEST_TMPDIR/once"
-    sed -i '/^# Earlier Claude sessions$/,$d; /^# Working in this sandbox$/,$d' "$HOME/.claude/CLAUDE.md"
+    # Not sed -i, whose argument differs on macOS.
+    sed '/^# Earlier Claude sessions$/,$d; /^# Working in this sandbox$/,$d' "$HOME/.claude/CLAUDE.md" > "$BATS_TEST_TMPDIR/md" &&
+        mv "$BATS_TEST_TMPDIR/md" "$HOME/.claude/CLAUDE.md"
     run_setup = = = 2>/dev/null
     [ "$(grep -c '^## Sandbox reference$' "$HOME/.claude/CLAUDE.md")" = 1 ]
 }
