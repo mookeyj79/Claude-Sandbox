@@ -130,6 +130,7 @@ note_sandbox_rules() {
 - The scratchpad, `/tmp`, Docker volumes and installed tools are gone when the sandbox is recreated. Keep signing keys and other state you can't rebuild in the mounted project folder from the first build, and put venvs under `$HOME`. Paths written to `/etc/sandbox-persistent.sh` or into repo files point at a lasting location, never the scratchpad.
 - On a Windows drive mount, symlinks fail (so venvs do too), and git can fail to update refs. When it does, commit in a clone outside the mount and bring the result back as patches.
 - A non-HTTP connection the proxy blocks still opens, then returns nothing. On an empty reply from a host or port, run `curl -si http://<host>:<port>/` and read the 403 body. If it says `Blocked by local rule` for `host.docker.internal`, an old deny rule is beating the allow: point the user at https://github.com/mookeyj79/Claude-Sandbox/blob/main/NETWORK-POLICY.md.
+- `prek` is installed: use it for a repo's `.pre-commit-config.yaml` (`prek run --all-files`, `prek install`) instead of installing `pre-commit`.
 - `pkill -f` and `pgrep -f` patterns also match the shell running them, which kills your own command. Stop background tasks with TaskStop, or kill by PID (`ss -ltnp` finds a port's).
 RULES
 }
@@ -156,7 +157,7 @@ set_git_identity() {
 }
 
 # ---- Tooling ------------------------------------------------------------------------------
-# Installs Chromium and PowerShell, which the image lacks. Prints "exit status 0" last on success.
+# Installs Chromium, PowerShell and prek, which the image lacks. Prints "exit status 0" last on success.
 install_tools() {
     local failed="" i
     # The image ships with empty package lists, so nothing installs until an update succeeds.
@@ -189,6 +190,17 @@ install_tools() {
     else
         failed="$failed powershell"
     fi
+    # prek, a drop-in for pre-commit that runs the same .pre-commit-config.yaml, also from its
+    # GitHub release: one binary, with no Python environment to keep.
+    local ptgz="$work/prek.tar.gz" ptriple
+    case "$(uname -m)" in x86_64|aarch64) ptriple="$(uname -m)-unknown-linux-gnu" ;; *) ptriple="" ;; esac
+    if [ -n "$ptriple" ] &&
+       curl -fsSL --max-time 300 -o "$ptgz" "https://github.com/j178/prek/releases/latest/download/prek-$ptriple.tar.gz" &&
+       sudo tar -xzf "$ptgz" -C /usr/local/bin --strip-components=1 --no-same-owner "prek-$ptriple/prek"; then
+        rm -f "$ptgz"
+    else
+        failed="$failed prek"
+    fi
     if [ -z "$failed" ]; then echo "exit status 0"; else echo "exit status 1: failed to install:$failed"; fi
 }
 
@@ -196,7 +208,8 @@ install_tools() {
 # $(...) subshell: only this shell can wait for its own background jobs.)
 tools_pid=""
 start_tools() {
-    command -v chromium >/dev/null 2>&1 && command -v pwsh >/dev/null 2>&1 && return 0
+    command -v chromium >/dev/null 2>&1 && command -v pwsh >/dev/null 2>&1 &&
+        command -v prek >/dev/null 2>&1 && return 0
     echo "claude-sandbox: install tooling" >&2
     install_tools > "$tools_log" 2>&1 &
     tools_pid=$!
