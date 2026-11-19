@@ -15,8 +15,8 @@ setup() {
     # Stand-in for `claude update`.
     printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/claude"
     chmod +x "$BATS_TEST_TMPDIR/bin/claude"
-    # Chromium and PowerShell already present, so the background install is skipped.
-    for t in chromium pwsh; do printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/$t"; chmod +x "$BATS_TEST_TMPDIR/bin/$t"; done
+    # Chromium, PowerShell and prek already present, so the background install is skipped.
+    for t in chromium pwsh prek; do printf '#!/bin/sh\nexit 0\n' > "$BATS_TEST_TMPDIR/bin/$t"; chmod +x "$BATS_TEST_TMPDIR/bin/$t"; done
     # Stand-in for `gh api user`: id, login and name, as the --jq in setup prints them.
     printf '#!/bin/sh\nprintf "123\\tocto\\tOcto Cat\\n"\n' > "$BATS_TEST_TMPDIR/bin/gh"
     chmod +x "$BATS_TEST_TMPDIR/bin/gh"
@@ -115,12 +115,12 @@ MD
 }
 
 # Stands in for sudo (logging each command), apt-cache and curl; $1 is the step that fails, if any:
-# chromium (the apt install) or powershell (the release download).
+# chromium (the apt install), powershell or prek (the release download).
 stub_installer() {
     # setup.sh runs only inside the (Linux) sandbox.
     [ "$(uname -s)" = Linux ] || skip "Linux only"
-    rm "$BATS_TEST_TMPDIR/bin/chromium" "$BATS_TEST_TMPDIR/bin/pwsh"
-    # A PATH holding only what the script needs, so a real chromium or pwsh on this machine is hidden.
+    rm "$BATS_TEST_TMPDIR/bin/chromium" "$BATS_TEST_TMPDIR/bin/pwsh" "$BATS_TEST_TMPDIR/bin/prek"
+    # A PATH holding only what the script needs, so a real chromium, pwsh or prek here is hidden.
     local sys="$BATS_TEST_TMPDIR/sys" cmd
     mkdir -p "$sys"
     for cmd in bash sh awk cat chmod cp dirname env grep jq mkdir mv rm sed seq sleep sort tail tee timeout uname; do
@@ -140,7 +140,8 @@ SH
 echo "\$*" >> "$BATS_TEST_TMPDIR/curl.log"
 case "\$*" in
     *-fsSI*) echo "location: https://github.com/PowerShell/PowerShell/releases/tag/v7.7.0" ;;
-    *) [ "$fail" != powershell ] ;;
+    *PowerShell*) [ "$fail" != powershell ] ;;
+    *prek*) [ "$fail" != prek ] ;;
 esac
 SH
     chmod +x "$BATS_TEST_TMPDIR/bin/sudo" "$BATS_TEST_TMPDIR/bin/apt-cache" "$BATS_TEST_TMPDIR/bin/curl"
@@ -148,7 +149,7 @@ SH
 
 tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
 
-@test "installs Chromium and PowerShell before returning" {
+@test "installs Chromium, PowerShell and prek before returning" {
     stub_installer
     run run_setup = = =
     [ "$(tools_result)" = "exit status 0" ]
@@ -157,6 +158,16 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
     grep -q 'install -y --no-install-recommends -o DPkg::Lock::Timeout=300 chromium libicu76$' "$BATS_TEST_TMPDIR/sudo.log"
     grep -q 'releases/download/v7.7.0/powershell-7.7.0-linux-' "$BATS_TEST_TMPDIR/curl.log"
     grep -q '^ln -sf /opt/microsoft/powershell/7/pwsh /usr/bin/pwsh$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q 'j178/prek/releases/latest/download/prek-[a-z0-9_]*-unknown-linux-gnu.tar.gz$' "$BATS_TEST_TMPDIR/curl.log"
+    grep -q '^tar -xzf .*/prek.tar.gz -C /usr/local/bin --strip-components=1 --no-same-owner prek-[a-z0-9_]*-unknown-linux-gnu/prek$' "$BATS_TEST_TMPDIR/sudo.log"
+}
+
+@test "a failed prek download still installs the rest and warns" {
+    stub_installer prek
+    run run_setup = = =
+    [[ "$output" == *"WARNING: failed to install: prek"* ]]
+    grep -q 'chromium libicu76$' "$BATS_TEST_TMPDIR/sudo.log"
+    grep -q '/usr/bin/pwsh$' "$BATS_TEST_TMPDIR/sudo.log"
 }
 
 @test "a failed PowerShell download still installs Chromium and warns how to retry" {
@@ -185,7 +196,7 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
     [ "$(grep -c '^apt-get update$' "$BATS_TEST_TMPDIR/sudo.log")" = 3 ]
 }
 
-@test "skips the install when both are already there" {
+@test "skips the install when all are already there" {
     run_setup = = = 2>/dev/null
     [ ! -e "$HOME/.cache/claude-sandbox/tools.log" ]
 }
