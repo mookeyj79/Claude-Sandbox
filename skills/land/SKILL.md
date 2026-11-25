@@ -1,6 +1,6 @@
 ---
-name: ship
-description: Commit, open a PR, wait for CI, then merge. Use when the user asks to commit, PR and merge in one go, or to ship the current work.
+name: land
+description: Land the current work (commit, open a PR, wait for CI, then merge). Use when the user asks to land a change, or to commit, PR and merge in one go.
 ---
 
 Land the current work on the default branch: commit, PR, **green** CI, squash-merge, sync. The user asked for all of it, so run straight through without stopping between steps. Stop only when a step goes **red**: a failed check, a conflict, a refused merge.
@@ -15,7 +15,7 @@ Done when `git status --short` shows nothing of this change left uncommitted.
 
 ## 2. Open the PR
 
-`git push -u origin <branch>`. Write the body with the `pr` skill if it's installed, otherwise a short summary of what changed and why. Create the PR with `gh pr create --base <default> --title ... --body-file <file>`.
+`git push -u origin <branch>`. If the branch already has an open PR (`gh pr view --json number,state`), use that one and go to step 3. Otherwise write the body with the `pr` skill, or as a short summary of what changed and why if it isn't installed, and create the PR with `gh pr create --base <default> --title ... --body-file <file>`.
 
 ## 3. Wait for CI
 
