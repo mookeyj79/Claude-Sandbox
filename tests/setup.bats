@@ -5,6 +5,7 @@
 setup() {
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
     export HOME="$BATS_TEST_TMPDIR/home"
+    unset XDG_CONFIG_HOME   # CI runners set it; git and setup must use the fake HOME
     # Earlier-session mounts appear under here; none unless a test makes them.
     export CLAUDE_SANDBOX_MOUNT_ROOT="$BATS_TEST_TMPDIR/mounts"
     stage="$BATS_TEST_TMPDIR/stage"
