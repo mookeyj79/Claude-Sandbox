@@ -5,6 +5,7 @@
 setup() {
     REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
     export HOME="$BATS_TEST_TMPDIR/home"
+    unset XDG_CONFIG_HOME   # CI runners set it; git and setup must use the fake HOME
     # Earlier-session mounts appear under here; none unless a test makes them.
     export CLAUDE_SANDBOX_MOUNT_ROOT="$BATS_TEST_TMPDIR/mounts"
     stage="$BATS_TEST_TMPDIR/stage"
@@ -287,4 +288,22 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
     [ "$status" -eq 0 ]
     [[ "$output" == *"git has no identity"* ]]
     [ -z "$(git config --global user.email)" ]
+}
+
+@test "ignores sbx's shim-start.lock in every repo, after the image's own global ignores" {
+    printf '# >>> sbx host ignore\n# <<< sbx host ignore\n.sbx' > "$HOME/.gitignore_template"
+    git config --global core.excludesFile '~/.gitignore_template'
+    run_setup = = = 2>/dev/null
+    [ "$(cat "$HOME/.gitignore_template")" = $'# >>> sbx host ignore\n# <<< sbx host ignore\n.sbx\n/shim-start.lock' ]
+    git init -q "$BATS_TEST_TMPDIR/repo"
+    touch "$BATS_TEST_TMPDIR/repo/shim-start.lock"
+    [ -z "$(git -C "$BATS_TEST_TMPDIR/repo" status --porcelain)" ]
+
+    run_setup = = = 2>/dev/null
+    [ "$(grep -c shim-start.lock "$HOME/.gitignore_template")" -eq 1 ]
+}
+
+@test "no global ignore file set: uses git's default one" {
+    run_setup = = = 2>/dev/null
+    [ "$(cat "$HOME/.config/git/ignore")" = /shim-start.lock ]
 }
