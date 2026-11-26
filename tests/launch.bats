@@ -110,3 +110,10 @@ EOF
     run claude
     [[ "$output" == *"claude-sandbox ($(git -C "$REPO_ROOT" rev-parse --short HEAD)): starting $key-"* ]]
 }
+
+@test "removes unused images only after its own sandbox exists, so its image is kept" {
+    run claude
+    [ "$status" -eq 0 ]
+    order=$(sbx_calls | grep -nE '^(create|df) ' | cut -d: -f2 | cut -d' ' -f1 | tr '\n' ' ')
+    [ "$order" = "create df " ]
+}

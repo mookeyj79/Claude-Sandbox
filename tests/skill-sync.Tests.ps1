@@ -107,4 +107,35 @@ Describe 'Sync-ClaudeSandboxSkill' {
         Start-Sleep -Milliseconds 500
         Get-SbxCall | Should -BeNullOrEmpty
     }
+
+    It 'removes a skill that is no longer in the repo, and forgets it' {
+        Set-Content $added 'alpha', 'beta', 'ship', 'mattpocock/skills'
+        Sync-ClaudeSandboxSkill $repo 6>&1 | Should -BeNullOrEmpty
+        Get-SbxCall | Should -Be @('skills rm --force ship --no-input')
+        Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills')
+    }
+
+    It 'never removes skill repos' {
+        Set-Content $added 'alpha', 'beta', 'mattpocock/skills', 'other/repo'
+        Sync-ClaudeSandboxSkill $repo
+        Get-SbxCall | Should -BeNullOrEmpty
+        Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills', 'other/repo')
+    }
+
+    It 'reports a failed removal once, with the command, and does not retry it' {
+        Set-Content $added 'alpha', 'beta', 'ship', 'mattpocock/skills'
+        Set-Content (Join-Path $env:FAKE_SBX_DIR 'skill-ship') 'fail'
+        $out = (Sync-ClaudeSandboxSkill $repo 6>&1) -join "`n"
+        $out | Should -Match 'not found'
+        $out | Should -Match "couldn't remove skill ship, which is no longer in this repo. To remove it: sbx skills rm ship"
+        Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills')
+    }
+
+    It 'removes nothing if the repo has no skills folder' {
+        Set-Content $added 'alpha', 'beta', 'mattpocock/skills'
+        Remove-Item (Join-Path $repo 'skills') -Recurse -Force
+        Sync-ClaudeSandboxSkill $repo
+        Get-SbxCall | Should -BeNullOrEmpty
+        Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills')
+    }
 }
