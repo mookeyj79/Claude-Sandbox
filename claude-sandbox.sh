@@ -247,6 +247,7 @@ _claude_sandbox_add_skill() {
 # Only bare names in the added file are this repo's skills; owner/repo lines are skill repos.
 # The name is dropped from the added file whether or not `sbx skills rm` worked, so a skill that
 # was already removed by hand isn't retried on every run; a failure prints the command instead.
+# A skill that's already gone ("is not installed", docs/sbx-cli.md) counts as removed, quietly.
 _claude_sandbox_remove_stale_skills() {
     local repo="$1" added="$2" skill out list
     [ -d "$repo/skills" ] && [ -f "$added" ] || return 0
@@ -254,7 +255,8 @@ _claude_sandbox_remove_stale_skills() {
     list=$(grep -v / "$added")
     while IFS= read -r skill; do
         [ -z "$skill" ] || [ -d "$repo/skills/$skill" ] && continue
-        if ! out=$(sbx skills rm --force "$skill" --no-input </dev/null 2>&1); then
+        if ! out=$(sbx skills rm --force "$skill" --no-input </dev/null 2>&1) &&
+            [[ "$out" != *"is not installed"* ]]; then
             [ -n "$out" ] && echo "$out" >&2
             echo "$_CLAUDE_SANDBOX_TAG: couldn't remove skill $skill, which is no longer in this repo. To remove it: sbx skills rm $skill" >&2
         fi

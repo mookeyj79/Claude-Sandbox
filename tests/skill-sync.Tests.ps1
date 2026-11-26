@@ -131,6 +131,14 @@ Describe 'Sync-ClaudeSandboxSkill' {
         Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills')
     }
 
+    It 'drops a skill already removed by hand quietly' {
+        Set-Content $added 'alpha', 'beta', 'ship', 'mattpocock/skills'
+        Set-Content (Join-Path $env:FAKE_SBX_DIR 'skill-ship') 'missing'
+        $out = (Sync-ClaudeSandboxSkill $repo 6>&1) -join "`n"
+        $out | Should -BeNullOrEmpty
+        Get-Content $added | Should -Be @('alpha', 'beta', 'mattpocock/skills')
+    }
+
     It 'removes nothing if the repo has no skills folder' {
         Set-Content $added 'alpha', 'beta', 'mattpocock/skills'
         Remove-Item (Join-Path $repo 'skills') -Recurse -Force

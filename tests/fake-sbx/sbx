@@ -9,9 +9,11 @@ All state lives under $FAKE_SBX_DIR:
   sandboxes/<name>/fs/...    the sandbox's filesystem, for `sbx cp`
   sandboxes/<name>/fail-cp   if present, every `sbx cp` touching this sandbox fails
   skill-<name>               how `sbx skills add --skill <name>` behaves:
-                               ok (default) | exists | fail | hang
+                               ok (default) | exists | fail | hang | missing
                              exists: already installed, so sbx would ask before overwriting
                              fail also makes `sbx skills rm <name>` fail
+                             missing: not installed, so `sbx skills rm <name>` fails with
+                               the real "is not installed" message
   skill-<owner>__<repo>      the same, for `sbx skills add <owner>/<repo>` without --skill
   create-fails-with-mounts   if present, `sbx create` with extra mounts fails
   setup-fails                if present, running sandbox/setup.sh fails (and creates nothing)
@@ -104,7 +106,11 @@ def cmd_skills(args):
     if args[:1] in (["rm"], ["remove"], ["delete"]):
         names = [a for a in args[1:] if not a.startswith("-")]
         for skill in names:
-            if read(os.path.join(STATE, f"skill-{skill}"), "ok") == "fail":
+            mode = read(os.path.join(STATE, f"skill-{skill}"), "ok")
+            if mode == "missing":   # the real message (docs/sbx-cli.md)
+                print(f'error: skill "{skill}" is not installed\n  try: sbx skills ls', file=sys.stderr)
+                return 1
+            if mode == "fail":
                 print(f"skill {skill}: not found", file=sys.stderr)
                 return 1
         return 0
