@@ -11,10 +11,14 @@ All state lives under $FAKE_SBX_DIR:
   skill-<name>               how `sbx skills add --skill <name>` behaves:
                                ok (default) | exists | fail | hang
                              exists: already installed, so sbx would ask before overwriting
+                             fail also makes `sbx skills rm <name>` fail
   skill-<owner>__<repo>      the same, for `sbx skills add <owner>/<repo>` without --skill
   create-fails-with-mounts   if present, `sbx create` with extra mounts fails
   setup-fails                if present, running sandbox/setup.sh fails (and creates nothing)
   ls-plain                   if present, `sbx ls` prints statuses without the leading dot
+  images                     the Images table rows for `sbx df --verbose`, one per line:
+                               <repository> <tag> <image id> <containers>
+  image-<id>                 if it says fail, `sbx template rm <id>` fails
 """
 import json
 import os
@@ -97,6 +101,13 @@ def cmd_ls(args):
 def cmd_skills(args):
     if args[:1] == ["update"]:
         return 0
+    if args[:1] in (["rm"], ["remove"], ["delete"]):
+        names = [a for a in args[1:] if not a.startswith("-")]
+        for skill in names:
+            if read(os.path.join(STATE, f"skill-{skill}"), "ok") == "fail":
+                print(f"skill {skill}: not found", file=sys.stderr)
+                return 1
+        return 0
     if args[:1] == ["add"] and len(args) > 1:
         skill = args[args.index("--skill") + 1] if "--skill" in args else args[1].replace("/", "__")
         mode = read(os.path.join(STATE, f"skill-{skill}"), "ok")
@@ -114,6 +125,34 @@ def cmd_skills(args):
             return 1
         return 0
     print(f"fake sbx: unsupported skills call {args}", file=sys.stderr)
+    return 2
+
+
+def cmd_df(args):
+    # Layout of the real `sbx df --verbose`, captured in docs/sbx-cli.md.
+    print("\n  Images space usage")
+    print("  REPOSITORY                                TAG                IMAGE ID       CREATED   SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS")
+    for line in read(os.path.join(STATE, "images")).splitlines():
+        repo, tag, image, containers = line.split()
+        print(f"  {repo:<41} {tag:<18} {image:<14} 2w        unknown   25.05kB       unknown       {containers}")
+    print("\n  Containers space usage")
+    print("  CONTAINER ID   IMAGE                                    LOCAL VOLUMES   SIZE      CREATED   STATUS    NAMES")
+    print("  26fd3c64ec27   sandbox-kit-assembled:8c076eb8c89a6a0d   1               1.332GB   16m       running   x")
+    print("\n  Local volumes space usage")
+    print("  VOLUME NAME                                  LINKS   SIZE")
+    print("  x-docker                                     1       9.503MB")
+    return 0
+
+
+def cmd_template(args):
+    if args[:1] in (["rm"], ["remove"], ["delete"]):
+        image = [a for a in args[1:] if not a.startswith("-")][0]
+        if read(os.path.join(STATE, f"image-{image}")) == "fail":
+            print(f"image {image}: in use", file=sys.stderr)
+            return 1
+        print(f"\n  Removed template {image}\n")
+        return 0
+    print(f"fake sbx: unsupported template call {args}", file=sys.stderr)
     return 2
 
 
@@ -154,6 +193,10 @@ def main(argv):
         return cmd_ls(args)
     if cmd == "skills":
         return cmd_skills(args)
+    if cmd == "df":
+        return cmd_df(args)
+    if cmd == "template":
+        return cmd_template(args)
     print(f"fake sbx: unsupported command {argv}", file=sys.stderr)
     return 2
 

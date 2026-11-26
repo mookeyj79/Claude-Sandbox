@@ -4,7 +4,7 @@
 
 If you need behaviour that isn't here, ask the user to run the command on the host and paste the output. Then add it to this page in the same change.
 
-Minimum version: **0.51.0** (`sbx version`), the first one with the read-only mounts the wrappers add.
+Last captured from **0.54.0**. Minimum version: **0.51.0** (`sbx version`), the first one with the read-only mounts the wrappers add.
 
 ## `sbx skills add`
 
@@ -70,6 +70,73 @@ The wrappers install one skill (or one whole repo) per call with `--no-input`. O
 ## `sbx skills update`
 
 Re-downloads every skill installed with `sbx skills add` from the repo it came from. It **doesn't** add skills that were never installed, which is why the wrappers install new repo skills themselves (#11).
+
+## `sbx skills rm` and `sbx skills ls`
+
+`sbx skills rm SKILL... [-f|--force]` (aliases `remove`, `delete`) removes skills from the store; it asks for confirmation unless given `--force`. Removal reaches running sandboxes at once: their link to the skill stops resolving.
+
+The wrappers remove a skill they installed from this repo's `skills/` once it's gone from there (deleted or renamed), so sandboxes stop loading it. What `rm` prints for a skill that isn't installed isn't captured yet; the wrappers treat any failure the same way.
+
+`sbx skills ls` lists every installed skill and its store:
+
+```
+❯ sbx skills ls
+
+  SKILL                             STORE
+  ai-behavior-trees-utility-ai      C:\Users\mooke\AppData\Local\DockerSandboxes\sandboxes\state\agent-skills
+  land                              C:\Users\mooke\AppData\Local\DockerSandboxes\sandboxes\state\agent-skills
+```
+
+## Disk usage: `sbx df`, `sbx prune`, `sbx reset`
+
+Nearly all of sbx's disk use is under `%LOCALAPPDATA%\DockerSandboxes\sandboxes\state\sandboxd\containerd`, and most of it is cached images, not sandboxes. With one sandbox running (sbx 0.54.0), that folder held 62.7 GB: 44.6 GB of image snapshots (`io.containerd.snapshotter.v1.erofs`), 8 GB of image layers (`io.containerd.content.v1.content`) and 10 GB of block volumes. `sbx df` showed 23 images with one in use, and couldn't measure their size:
+
+```
+❯ sbx df
+
+  TYPE            TOTAL   ACTIVE   SIZE      RECLAIMABLE
+  Images          23      1        unknown   unknown
+  Containers      1       1        1.285GB   0B (0%)
+  Local Volumes   1       1        9.503MB   0B (0%)
+```
+
+`sbx df` also takes `--format table|json|yaml` / `--json` (JSON shape not captured). `--verbose` lists each image, container and volume. Most images are untagged old `sbx/claude` pulls; `CONTAINERS` counts stopped sandboxes too. An image shows on two rows (same IMAGE ID) when it's also tagged as a template:
+
+```
+❯ sbx df --verbose
+
+  Images space usage
+  REPOSITORY                                TAG                IMAGE ID       CREATED   SIZE      SHARED SIZE   UNIQUE SIZE   CONTAINERS
+  docker.io/library/sandbox-kit-assembled   3344a263200166f7   55dabccee96c   2w        unknown   0B            unknown       0
+  docker.io/sbx/claude                      <none>             55dabccee96c   2w        unknown   0B            unknown       0
+  docker.io/library/sandbox-kit-assembled   8c076eb8c89a6a0d   6925fc818508   3h        unknown   0B            unknown       1
+  docker.io/sbx/claude                      <none>             6925fc818508   3h        unknown   0B            unknown       1
+  docker.io/sbx/claude                      <none>             01b847e74f7a   1w        unknown   25.71kB       unknown       0
+
+  Containers space usage
+  CONTAINER ID   IMAGE                                    LOCAL VOLUMES   SIZE      CREATED   STATUS    NAMES
+  26fd3c64ec27   sandbox-kit-assembled:8c076eb8c89a6a0d   1               1.332GB   16m       running   claude-ai-environment-48af6ad7-7oab
+
+  Local volumes space usage
+  VOLUME NAME                                  LINKS   SIZE
+  claude-ai-environment-48af6ad7-7oab-docker   1       9.503MB
+```
+
+`sbx template ls` lists only the tagged `sandbox-kit-assembled` images, but `sbx template rm TAG|DIGEST|ID` (aliases `remove`, `delete`; `-f/--force` skips the confirmation) removes any image by ID or ID prefix, untagged ones included:
+
+```
+❯ sbx template rm fd56087ae3f3
+
+  Remove template "fd56087ae3f3"? This cannot be undone. (y/N) y
+
+  Removed template fd56087ae3f3
+```
+
+Removing the image ID removes all of its rows. Once a day the wrappers remove every image whose rows all show 0 containers, just after creating their own sandbox, so the image it runs on is in use. sbx has no command of its own to prune images.
+
+`sbx prune` removes only **stopped sandboxes**, never images. `--dry-run` lists them, `--force` skips the confirmation, and `--filter until=<RFC 3339 | Unix time | Go duration>` keeps sandboxes stopped more recently. It also deletes secrets scoped to each pruned sandbox.
+
+`sbx reset` (`--force`, `--preserve-secrets`) returns sbx to a fresh install. It clears the image cache, but it also stops every sandbox, deletes all local policy rules (see [`NETWORK-POLICY.md`](../NETWORK-POLICY.md)), signs you out and deletes stored secrets unless `--preserve-secrets` is passed.
 
 ## `sbx ls`
 

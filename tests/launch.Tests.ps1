@@ -88,4 +88,10 @@ Describe 'claude' {
         $out = (claude 6>&1) -join "`n"
         $out | Should -Match ([regex]::Escape("claude-sandbox ($rev): starting $key-"))
     }
+
+    It 'removes unused images only after its own sandbox exists, so its image is kept' {
+        claude 6>&1 | Out-Null
+        @(Get-SbxCall | Where-Object { $_ -match '^(create|df) ' } | ForEach-Object { ($_ -split ' ')[0] }) |
+            Should -Be @('create', 'df')
+    }
 }

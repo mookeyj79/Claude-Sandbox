@@ -213,6 +213,7 @@ _claude_sandbox_sync_skills() {
         grep -qxF "$src" "$added" 2>/dev/null && continue
         _claude_sandbox_add_skill "$added" "$src" "$src"
     done
+    _claude_sandbox_remove_stale_skills "$repo" "$added"
 
     if [ -z "$(find "$stamp" -mmin -1440 2>/dev/null)" ]; then
         date > "$stamp"
@@ -238,6 +239,66 @@ _claude_sandbox_add_skill() {
         [ -n "$out" ] && echo "$out" >&2
         echo "$_CLAUDE_SANDBOX_TAG: couldn't install skill $what, will retry next run. To try now: sbx skills add $*" >&2
     fi
+}
+
+# Remove skills this repo installed that are no longer in its skills/ (deleted or renamed), or
+# every sandbox keeps loading them from sbx's store.
+#   $1  folder holding skills/ (this repo)   $2  added file
+# Only bare names in the added file are this repo's skills; owner/repo lines are skill repos.
+# The name is dropped from the added file whether or not `sbx skills rm` worked, so a skill that
+# was already removed by hand isn't retried on every run; a failure prints the command instead.
+_claude_sandbox_remove_stale_skills() {
+    local repo="$1" added="$2" skill out list
+    [ -d "$repo/skills" ] && [ -f "$added" ] || return 0
+    # Read the list first: the loop rewrites the file.
+    list=$(grep -v / "$added")
+    while IFS= read -r skill; do
+        [ -z "$skill" ] || [ -d "$repo/skills/$skill" ] && continue
+        if ! out=$(sbx skills rm --force "$skill" --no-input </dev/null 2>&1); then
+            [ -n "$out" ] && echo "$out" >&2
+            echo "$_CLAUDE_SANDBOX_TAG: couldn't remove skill $skill, which is no longer in this repo. To remove it: sbx skills rm $skill" >&2
+        fi
+        grep -vxF "$skill" "$added" > "$added.tmp"
+        mv "$added.tmp" "$added"
+    done <<EOF
+$list
+EOF
+}
+
+# Image cleanup: sbx keeps every image it has pulled, and never deletes one, so a new sbx/claude
+# image every few days adds up to tens of GB (docs/sbx-cli.md). Once a day, remove each image
+# no sandbox uses, running or stopped. Called just after this window's sandbox is created, so the
+# image it runs on is in use and kept; otherwise a run with no other sandbox would remove the
+# current image and the next one would download it again.
+# State in $HOME: .claude-sandbox-images-pruned (time of the last cleanup).
+_claude_sandbox_prune_images() {
+    local stamp="$HOME/.claude-sandbox-images-pruned" ids id n
+    [ -n "$(find "$stamp" -mmin -1440 2>/dev/null)" ] && return 0
+    date > "$stamp"
+    ids=$(_claude_sandbox_unused_images)
+    [ -n "$ids" ] || return 0
+    n=$(printf '%s\n' "$ids" | wc -l | tr -d ' ')
+    echo "$_CLAUDE_SANDBOX_TAG: removing $n unused sandbox images (checked once a day)" >&2
+    while IFS= read -r id; do
+        sbx template rm --force --no-input "$id" </dev/null >/dev/null 2>&1 ||
+            echo "$_CLAUDE_SANDBOX_TAG: couldn't remove image $id. To try now: sbx template rm $id" >&2
+    done <<EOF
+$ids
+EOF
+}
+
+# Image IDs no sandbox uses, one per line, from the Images table of `sbx df --verbose`:
+# REPOSITORY TAG IMAGE-ID CREATED SIZE SHARED-SIZE UNIQUE-SIZE CONTAINERS. One image can show on
+# several rows (a tag and an untagged one); it's in use if any of them has containers.
+_claude_sandbox_unused_images() {
+    sbx df --verbose </dev/null 2>/dev/null | awk '
+        /Images space usage/ { on = 1; next }
+        /space usage/        { on = 0 }
+        on && NF >= 8 && $3 ~ /^[0-9a-f]+$/ && $NF ~ /^[0-9]+$/ {
+            if ($NF > 0) used[$3] = 1
+            else if (!($3 in seen)) { seen[$3] = 1; order[++n] = $3 }
+        }
+        END { for (i = 1; i <= n; i++) if (!(order[i] in used)) print order[i] }'
 }
 
 _claude_sandbox_main() {
@@ -276,6 +337,7 @@ _claude_sandbox_main() {
     trap "echo 'claude-sandbox: saving history and removing $name' >&2; _claude_sandbox_close '$name'" EXIT
     trap 'exit 130' INT TERM HUP
 
+    _claude_sandbox_prune_images
     _claude_sandbox_prepare "$name" || return 1
 
     # `sbx exec`, not `sbx run`: run always adds --dangerously-skip-permissions, which overrides

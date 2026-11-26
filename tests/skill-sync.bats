@@ -109,3 +109,37 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     sleep 0.5
     [ "$(sbx_calls)" = "" ]
 }
+
+@test "removes a skill that is no longer in the repo, and forgets it" {
+    printf '%s\n' alpha beta ship mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
+    run _claude_sandbox_sync_skills "$repo"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+    [ "$(sbx_calls)" = "skills rm --force ship --no-input" ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+}
+
+@test "never removes skill repos" {
+    printf '%s\n' alpha beta mattpocock/skills other/repo > "$HOME/.claude-sandbox-skills-added"
+    _claude_sandbox_sync_skills "$repo"
+    [ "$(sbx_calls)" = "" ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills\nother/repo' ]
+}
+
+@test "a failed removal is reported once, with the command, and not retried" {
+    printf '%s\n' alpha beta ship mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
+    echo fail > "$FAKE_SBX_DIR/skill-ship"
+    run _claude_sandbox_sync_skills "$repo"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not found"* ]]
+    [[ "$output" == *"couldn't remove skill ship, which is no longer in this repo. To remove it: sbx skills rm ship"* ]]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+}
+
+@test "removes nothing if the repo has no skills folder" {
+    printf '%s\n' alpha beta mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
+    rm -r "$repo/skills"
+    _claude_sandbox_sync_skills "$repo"
+    [ "$(sbx_calls)" = "" ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+}

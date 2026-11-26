@@ -54,11 +54,71 @@ function Sync-ClaudeSandboxSkill {
     foreach ($src in $script:ClaudeSandboxSkillRepos) {
         if ($have -notcontains $src) { Add-ClaudeSandboxSkill $sbx $added $src @($src) }
     }
+    Remove-ClaudeSandboxStaleSkill $sbx $RepoDir $added
 
     if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {
         Set-Content -Path $stamp -Value (Get-Date -Format o)
         Start-Process $sbx -ArgumentList 'skills', 'update' -WindowStyle Hidden
     }
+}
+
+function Remove-ClaudeSandboxStaleSkill {
+    # Remove skills this repo installed that are no longer in its skills/ (deleted or renamed),
+    # or every sandbox keeps loading them from sbx's store.
+    # Only bare names in the added file are this repo's skills; owner/repo lines are skill repos.
+    # The name is dropped from the added file whether or not `sbx skills rm` worked, so a skill
+    # that was already removed by hand isn't retried on every run; a failure prints the command.
+    param([string]$Sbx, [string]$RepoDir, [string]$Added)
+    $skills = Join-Path $RepoDir 'skills'
+    if (-not (Test-Path $skills -PathType Container) -or -not (Test-Path $Added)) { return }
+    $stale = @(Get-Content $Added | Where-Object {
+        $_ -and $_ -notmatch '/' -and -not (Test-Path (Join-Path $skills $_) -PathType Container) })
+    foreach ($skill in $stale) {
+        $out = (& $Sbx skills rm --force $skill --no-input 2>&1 | Out-String).TrimEnd()
+        if ($LASTEXITCODE -ne 0) {
+            if ($out) { Write-Host $out }
+            Write-Host "$($script:ClaudeSandboxTag): couldn't remove skill $skill, which is no longer in this repo. To remove it: sbx skills rm $skill" -ForegroundColor Yellow
+        }
+        Set-Content -Path $Added -Value @(Get-Content $Added | Where-Object { $_ -ne $skill })
+    }
+}
+
+function Remove-ClaudeSandboxUnusedImage {
+    # Image cleanup: sbx keeps every image it has pulled, and never deletes one, so a new
+    # sbx/claude image every few days adds up to tens of GB (docs/sbx-cli.md). Once a day, remove
+    # each image no sandbox uses, running or stopped. Called just after this window's sandbox is
+    # created, so the image it runs on is in use and kept; otherwise a run with no other sandbox
+    # would remove the current image and the next one would download it again.
+    # State in $script:ClaudeSandboxStateDir: .claude-sandbox-images-pruned (time of the last cleanup).
+    $stamp = Join-Path $script:ClaudeSandboxStateDir '.claude-sandbox-images-pruned'
+    if ((Test-Path $stamp) -and (Get-Item $stamp -Force).LastWriteTime -gt (Get-Date).AddHours(-24)) { return }
+    Set-Content -Path $stamp -Value (Get-Date -Format o)
+    $ids = @(Get-ClaudeSandboxUnusedImage)
+    if (-not $ids) { return }
+    Write-Host "$($script:ClaudeSandboxTag): removing $($ids.Count) unused sandbox images (checked once a day)" -ForegroundColor DarkGray
+    foreach ($id in $ids) {
+        & sbx template rm --force --no-input $id *> $null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "$($script:ClaudeSandboxTag): couldn't remove image $id. To try now: sbx template rm $id" -ForegroundColor Yellow
+        }
+    }
+}
+
+function Get-ClaudeSandboxUnusedImage {
+    # Image IDs no sandbox uses, from the Images table of `sbx df --verbose`:
+    # REPOSITORY TAG IMAGE-ID CREATED SIZE SHARED-SIZE UNIQUE-SIZE CONTAINERS. One image can show
+    # on several rows (a tag and an untagged one); it's in use if any of them has containers.
+    $on = $false
+    $used = @{}
+    $seen = [Collections.Generic.List[string]]::new()
+    foreach ($line in @(& sbx df --verbose 2>$null)) {
+        if ($line -match 'Images space usage') { $on = $true; continue }
+        if ($line -match 'space usage') { $on = $false; continue }
+        $f = -split $line
+        if (-not $on -or $f.Count -lt 8 -or $f[2] -notmatch '^[0-9a-f]+$' -or $f[-1] -notmatch '^[0-9]+$') { continue }
+        if ([int]$f[-1] -gt 0) { $used[$f[2]] = $true } elseif (-not $seen.Contains($f[2])) { $seen.Add($f[2]) }
+    }
+    $seen | Where-Object { -not $used.ContainsKey($_) }
 }
 
 function Add-ClaudeSandboxSkill {
@@ -289,6 +349,7 @@ function claude {
     if ($LASTEXITCODE -ne 0) { $out | Write-Host; return }
 
     try {
+        Remove-ClaudeSandboxUnusedImage
         if (-not (Initialize-ClaudeSandbox $name)) { return }
 
         # `sbx exec`, not `sbx run`: run always adds --dangerously-skip-permissions, which overrides

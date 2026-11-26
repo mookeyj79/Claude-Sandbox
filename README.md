@@ -140,8 +140,10 @@ Setup is done. Check it worked with [Verify it's working](#verify-its-working). 
 |---|---|
 | Installs [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's [skills](#skills) | First run. A new skill in this repo is installed on the next run after a `git pull`. |
 | Refreshes installed skills | At most once a day, in the background |
+| Removes skills that were deleted or renamed in this repo | The next run after a `git pull` |
 | Saves and deletes sandboxes left over from earlier runs | Every run |
 | Creates a fresh sandbox, restores this folder's history, mounts earlier sessions read-only | Every run |
+| Deletes sandbox images no sandbox uses, which `sbx` otherwise keeps forever | At most once a day, after the new sandbox is created |
 | Updates Claude Code, sets Opus / medium effort / auto mode, installs the status line | Every run, inside the sandbox |
 | Saves history back to your machine and deletes the sandbox | When Claude exits |
 
@@ -326,7 +328,7 @@ There's nothing to set up. The first time you run `claude`, the wrapper installs
 
 This happens silently. If an install fails, you'll see a message, and it's retried on the next run. Installed skills are refreshed at most once a day. A new skill in this repo is installed on the next run after a `git pull`. A skill added to `mattpocock/skills` after the first install isn't picked up by the refresh, so run `sbx skills add mattpocock/skills` to get it.
 
-To remove one of the installed skills, run `sbx skills rm <name>`. It stays removed, because the wrapper installs each skill and skill repo only once.
+To remove one of the installed skills, run `sbx skills rm <name>`. It stays removed, because the wrapper installs each skill and skill repo only once. When a skill is deleted or renamed in this repo, the wrapper removes the old one for you on the next run.
 
 To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/skills`, ...), run `sbx skills import`. Add `--dry-run` first to preview. List the installed skills with `sbx skills ls`.
 
@@ -385,6 +387,7 @@ Each `claude` run:
 
 1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them. If the save fails, it warns you and keeps the sandbox to retry on the next run.
 2. **Creates** a sandbox named `claude-<folder>-<hash>-<id>`. The hash of the full path keeps `D:\Dev\api` and `D:\Work\api` apart. The random id lets several windows share a folder.
+   Then, at most once a day, it deletes every image no sandbox uses, running or stopped. `sbx` keeps each version of the Claude image it downloads and never deletes old ones, which can add up to tens of GB. The new sandbox's own image is in use by then, so it's kept.
 3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, adds the sandbox's working rules to Claude's instructions, sets the git identity, installs Chromium, PowerShell and prek, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
 4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
 5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
@@ -443,6 +446,8 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
 | `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and [upgrade](#updating) if it's older. |
 | `couldn't save history from <name>` | The sandbox was kept so its sessions aren't lost, and each `claude` run retries the save. If it keeps failing and you don't need those sessions, run `sbx rm --force <name>`. |
+| `couldn't remove skill <name>` or `couldn't remove image <id>` | Claude still starts. Run the command printed in the message; `sbx skills ls` and `sbx df --verbose` show what's installed. |
+| `sbx` uses a lot of disk space | Look in `%LOCALAPPDATA%\DockerSandboxes\sandboxes\state\sandboxd` (Windows). The wrapper deletes unused images once a day. `sbx df --verbose` lists images, and `sbx template rm <image id>` deletes one that has 0 containers. |
 | `couldn't install skill <name>, will retry next run` | Claude still starts without that skill, and the next run tries again. To install it now, run the `sbx skills add ...` command printed in the message. If it keeps failing, check `sbx login` and that GitHub is reachable. |
 | `--resume` shows no sessions | Check that the history store has a folder for this project and that the `sandbox/` folder is next to the wrapper. |
 | `setting up <name> failed` or `couldn't copy setup files` | Claude wasn't started, because the sandbox wasn't fully prepared. The lines above the message say what failed. Run `claude` again; if it keeps failing, check that `sandbox/` is next to the wrapper (`git pull` brings it back). |
