@@ -156,6 +156,20 @@ set_git_identity() {
         git config --global user.email "$id+$login@users.noreply.github.com"
 }
 
+# sbx leaves an empty shim-start.lock in the root of every workspace it starts a sandbox in.
+# Ignore it in every repo, through the global ignore file the image sets (or git's default if
+# none). The image's file has a block sbx manages between markers; this line goes after it.
+ignore_sbx_files() {
+    local f line='/shim-start.lock'
+    f="$(git config --global --path --get core.excludesFile)" || f=""
+    [ -n "$f" ] || f="${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
+    grep -qxF "$line" "$f" 2>/dev/null && return 0
+    # The image's file has no newline at the end.
+    [ -s "$f" ] && [ -n "$(tail -c1 "$f")" ] && line=$'\n'"$line"
+    mkdir -p "$(dirname "$f")" && printf '%s\n' "$line" >> "$f" ||
+        echo "claude-sandbox: WARNING: couldn't add shim-start.lock to git's global ignore file $f" >&2
+}
+
 # ---- Tooling ------------------------------------------------------------------------------
 # Installs Chromium, PowerShell and prek, which the image lacks. Prints "exit status 0" last on success.
 install_tools() {
@@ -273,6 +287,7 @@ disclose_sbx_guidance
 note_earlier_sessions
 note_sandbox_rules
 set_git_identity
+ignore_sbx_files
 # The tooling install runs alongside the Claude Code update, and is waited for after it.
 start_tools
 update_claude
