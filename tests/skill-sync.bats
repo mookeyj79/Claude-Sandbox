@@ -136,6 +136,15 @@ installed() { cat "$HOME/.claude-sandbox-skills-added" 2>/dev/null; }
     [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
 }
 
+@test "a skill already removed by hand is dropped quietly" {
+    printf '%s\n' alpha beta ship mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
+    echo missing > "$FAKE_SBX_DIR/skill-ship"
+    run _claude_sandbox_sync_skills "$repo"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+    [ "$(installed)" = $'alpha\nbeta\nmattpocock/skills' ]
+}
+
 @test "removes nothing if the repo has no skills folder" {
     printf '%s\n' alpha beta mattpocock/skills > "$HOME/.claude-sandbox-skills-added"
     rm -r "$repo/skills"

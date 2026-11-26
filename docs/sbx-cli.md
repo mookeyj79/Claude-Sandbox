@@ -75,7 +75,15 @@ Re-downloads every skill installed with `sbx skills add` from the repo it came f
 
 `sbx skills rm SKILL... [-f|--force]` (aliases `remove`, `delete`) removes skills from the store; it asks for confirmation unless given `--force`. Removal reaches running sandboxes at once: their link to the skill stops resolving.
 
-The wrappers remove a skill they installed from this repo's `skills/` once it's gone from there (deleted or renamed), so sandboxes stop loading it. What `rm` prints for a skill that isn't installed isn't captured yet; the wrappers treat any failure the same way.
+The wrappers remove a skill they installed from this repo's `skills/` once it's gone from there (deleted or renamed), so sandboxes stop loading it. For a skill that isn't installed, `rm` fails and prints:
+
+```
+❯ sbx skills rm --force ship --no-input
+error: skill "ship" is not installed
+  try: sbx skills ls
+```
+
+The wrappers count that as removed, since it's usually a skill already removed by hand, and warn only on other failures.
 
 `sbx skills ls` lists every installed skill and its store:
 

@@ -68,6 +68,7 @@ function Invoke-ClaudeSandboxSkillPrune {
     # Only bare names in the added file are this repo's skills; owner/repo lines are skill repos.
     # The name is dropped from the added file whether or not `sbx skills rm` worked, so a skill
     # that was already removed by hand isn't retried on every run; a failure prints the command.
+    # A skill that's already gone ("is not installed", docs/sbx-cli.md) counts as removed, quietly.
     param([string]$Sbx, [string]$RepoDir, [string]$Added)
     $skills = Join-Path $RepoDir 'skills'
     if (-not (Test-Path $skills -PathType Container) -or -not (Test-Path $Added)) { return }
@@ -75,7 +76,7 @@ function Invoke-ClaudeSandboxSkillPrune {
         $_ -and $_ -notmatch '/' -and -not (Test-Path (Join-Path $skills $_) -PathType Container) })
     foreach ($skill in $stale) {
         $out = (& $Sbx skills rm --force $skill --no-input 2>&1 | Out-String).TrimEnd()
-        if ($LASTEXITCODE -ne 0) {
+        if ($LASTEXITCODE -ne 0 -and $out -notmatch 'is not installed') {
             if ($out) { Write-Host $out }
             Write-Host "$($script:ClaudeSandboxTag): couldn't remove skill $skill, which is no longer in this repo. To remove it: sbx skills rm $skill" -ForegroundColor Yellow
         }
