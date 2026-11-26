@@ -1,10 +1,10 @@
-# Image cleanup: Remove-ClaudeSandboxUnusedImage
+# Image cleanup: Invoke-ClaudeSandboxImagePrune
 
 BeforeAll {
     . (Join-Path $PSScriptRoot 'Helpers.ps1')
 }
 
-Describe 'Remove-ClaudeSandboxUnusedImage' {
+Describe 'Invoke-ClaudeSandboxImagePrune' {
     BeforeEach {
         $root = Initialize-FakeSbx
         . (Join-Path $RepoRoot 'claude-sandbox.ps1')
@@ -23,7 +23,7 @@ Describe 'Remove-ClaudeSandboxUnusedImage' {
     AfterEach { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'removes each image no sandbox uses, once, and keeps the ones in use' {
-        $out = (Remove-ClaudeSandboxUnusedImage 6>&1) -join "`n"
+        $out = (Invoke-ClaudeSandboxImagePrune 6>&1) -join "`n"
         $out | Should -Match 'removing 2 unused sandbox images'
         Get-Removal | Should -Be @(
             'template rm --force --no-input 55dabccee96c',
@@ -31,25 +31,25 @@ Describe 'Remove-ClaudeSandboxUnusedImage' {
     }
 
     It 'runs at most once a day' {
-        Remove-ClaudeSandboxUnusedImage 6>&1 | Out-Null
+        Invoke-ClaudeSandboxImagePrune 6>&1 | Out-Null
         Set-Content (Join-Path $env:FAKE_SBX_DIR 'calls') -Value $null
-        Remove-ClaudeSandboxUnusedImage 6>&1 | Should -BeNullOrEmpty
+        Invoke-ClaudeSandboxImagePrune 6>&1 | Should -BeNullOrEmpty
         Get-SbxCall | Should -BeNullOrEmpty
 
         (Get-Item $stamp -Force).LastWriteTime = (Get-Date).AddDays(-2)
-        Remove-ClaudeSandboxUnusedImage 6>&1 | Out-Null
+        Invoke-ClaudeSandboxImagePrune 6>&1 | Out-Null
         Get-Removal | Should -Not -BeNullOrEmpty
     }
 
     It 'says nothing when every image is in use' {
         Set-Content (Join-Path $env:FAKE_SBX_DIR 'images') 'docker.io/sbx/claude <none> 6925fc818508 1'
-        Remove-ClaudeSandboxUnusedImage 6>&1 | Should -BeNullOrEmpty
+        Invoke-ClaudeSandboxImagePrune 6>&1 | Should -BeNullOrEmpty
         Get-Removal | Should -BeNullOrEmpty
     }
 
     It 'reports a failed removal with the command, and the rest still go' {
         Set-Content (Join-Path $env:FAKE_SBX_DIR 'image-55dabccee96c') 'fail'
-        $out = (Remove-ClaudeSandboxUnusedImage 6>&1) -join "`n"
+        $out = (Invoke-ClaudeSandboxImagePrune 6>&1) -join "`n"
         $out | Should -Match "couldn't remove image 55dabccee96c. To try now: sbx template rm 55dabccee96c"
         Get-Removal | Should -Contain 'template rm --force --no-input 01b847e74f7a'
     }

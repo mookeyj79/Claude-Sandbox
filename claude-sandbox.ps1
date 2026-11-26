@@ -54,7 +54,7 @@ function Sync-ClaudeSandboxSkill {
     foreach ($src in $script:ClaudeSandboxSkillRepos) {
         if ($have -notcontains $src) { Add-ClaudeSandboxSkill $sbx $added $src @($src) }
     }
-    Remove-ClaudeSandboxStaleSkill $sbx $RepoDir $added
+    Invoke-ClaudeSandboxSkillPrune $sbx $RepoDir $added
 
     if (-not (Test-Path $stamp) -or (Get-Item $stamp).LastWriteTime -lt (Get-Date).AddHours(-24)) {
         Set-Content -Path $stamp -Value (Get-Date -Format o)
@@ -62,7 +62,7 @@ function Sync-ClaudeSandboxSkill {
     }
 }
 
-function Remove-ClaudeSandboxStaleSkill {
+function Invoke-ClaudeSandboxSkillPrune {
     # Remove skills this repo installed that are no longer in its skills/ (deleted or renamed),
     # or every sandbox keeps loading them from sbx's store.
     # Only bare names in the added file are this repo's skills; owner/repo lines are skill repos.
@@ -83,7 +83,7 @@ function Remove-ClaudeSandboxStaleSkill {
     }
 }
 
-function Remove-ClaudeSandboxUnusedImage {
+function Invoke-ClaudeSandboxImagePrune {
     # Image cleanup: sbx keeps every image it has pulled, and never deletes one, so a new
     # sbx/claude image every few days adds up to tens of GB (docs/sbx-cli.md). Once a day, remove
     # each image no sandbox uses, running or stopped. Called just after this window's sandbox is
@@ -349,7 +349,7 @@ function claude {
     if ($LASTEXITCODE -ne 0) { $out | Write-Host; return }
 
     try {
-        Remove-ClaudeSandboxUnusedImage
+        Invoke-ClaudeSandboxImagePrune
         if (-not (Initialize-ClaudeSandbox $name)) { return }
 
         # `sbx exec`, not `sbx run`: run always adds --dangerously-skip-permissions, which overrides
