@@ -256,7 +256,8 @@ resolve_setting() {
     esac
 }
 
-# Default model / effort / permission mode, and the status line. Flags passed to `claude` still
+# Default model / effort / permission mode, the status line, and Code Mode (experimental; it can
+# only be turned on from user settings, not a project's). Flags passed to `claude` still
 # override these.
 write_settings() {
     local f="$c/settings.json" model effort mode sl=""
@@ -272,6 +273,7 @@ write_settings() {
       | (if $e != "" then .effortLevel = $e else . end)
       | (if $p != "" then .permissions.defaultMode = $p else . end)
       | (if $sl != "" then .statusLine = {type: "command", command: $sl} else . end)
+      | .env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE = "1"
     ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 }
 

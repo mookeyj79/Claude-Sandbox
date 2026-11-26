@@ -211,6 +211,13 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
     [ "$(setting .permissions.defaultMode)" = auto ]
 }
 
+@test "turns on Code Mode and keeps other env settings" {
+    echo '{"env":{"KEEP":"x"}}' > "$HOME/.claude/settings.json"
+    run_setup = = = 2>/dev/null
+    [ "$(setting .env.CLAUDE_CODE_EXPERIMENTAL_CODE_MODE)" = 1 ]
+    [ "$(setting .env.KEEP)" = x ]
+}
+
 @test "a setting in an unknown form fails setup instead of being guessed at" {
     run run_setup sonnet - -
     [ "$status" -ne 0 ]
