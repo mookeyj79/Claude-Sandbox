@@ -97,7 +97,7 @@ The wrappers count that as removed, since it's usually a skill already removed b
 
 ## Disk usage: `sbx df`, `sbx prune`, `sbx reset`
 
-Nearly all of sbx's disk use is under `%LOCALAPPDATA%\DockerSandboxes\sandboxes\state\sandboxd\containerd`, and most of it is cached images, not sandboxes. With one sandbox running (sbx 0.54.0), that folder held 62.7 GB: 44.6 GB of image snapshots (`io.containerd.snapshotter.v1.erofs`), 8 GB of image layers (`io.containerd.content.v1.content`) and 10 GB of block volumes. `sbx df` showed 23 images with one in use, and couldn't measure their size:
+Nearly all of sbx's disk use is under `%LOCALAPPDATA%\DockerSandboxes\sandboxes\state\sandboxd\containerd`, and most of it is cached images, not sandboxes. With one sandbox running (sbx 0.54.0), that folder held 62.7 GB: 44.6 GB of image snapshots (`io.containerd.snapshotter.v1.erofs`), 8 GB of image layers (`io.containerd.content.v1.content`) and a 10 GB block volume (sparse, see below). `sbx df` showed 23 images with one in use, and couldn't measure their size:
 
 ```
 ❯ sbx df
@@ -107,6 +107,8 @@ Nearly all of sbx's disk use is under `%LOCALAPPDATA%\DockerSandboxes\sandboxes\
   Containers      1       1        1.285GB   0B (0%)
   Local Volumes   1       1        9.503MB   0B (0%)
 ```
+
+Each sandbox has two sparse disk files, sized at their maximum: a 20 GB writable layer (`root\io.containerd.snapshotter.v1.erofs\snapshots\<n>\rwlayer.img`) and a 10 GB Docker volume (`root\com.docker.volume.driver.v1.block\images\<sandbox>-docker.img`). Explorer's Size, a folder's Properties and `Get-ChildItem` count those full 30 GB; only "Size on disk", WizTree's Allocated column and drive free space show what they hold. With one sandbox running and one image cached (sbx 0.54.0), `DockerSandboxes` was 32.4 GB by size but 3.7 GB allocated: `rwlayer.img` 1.24 GB, the volume under 30 MB. Space the sandbox frees inside its disk may not be handed back to Windows, so a long-lived sandbox's files can grow toward their maximum; both are deleted with the sandbox.
 
 `sbx df` also takes `--format table|json|yaml` / `--json` (JSON shape not captured). `--verbose` lists each image, container and volume. Most images are untagged old `sbx/claude` pulls; `CONTAINERS` counts stopped sandboxes too. An image shows on two rows (same IMAGE ID) when it's also tagged as a template:
 
