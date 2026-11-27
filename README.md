@@ -1,15 +1,19 @@
 # Claude Code in Docker Sandboxes
 
 [![Lint](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/lint.yml/badge.svg)](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/lint.yml)
+[![Test](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/test.yml/badge.svg)](https://github.com/mookeyj79/Claude-Sandbox/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandboxes/) (`sbx`) while typing `claude` exactly as before.
 
 - **Same commands:** `claude`, `claude --resume`, `claude -c`, `claude "fix the bug"`, ...
+- **Host Claude still there:** `claude-local` runs the Claude Code installed on your machine, with the same arguments, when there is one.
 - **A fresh sandbox every run,** deleted when Claude exits. Packages, binaries and stray processes never touch your machine.
 - **History is kept:** sessions are saved on your machine and restored into the next sandbox, so `--resume` works.
 - **Old chats are searchable:** Claude can read earlier sessions from your other projects and from host Claude, read-only.
 - **Any number of windows,** in the same folder or different ones. Each gets its own sandbox.
 - **Your defaults:** Opus, medium effort, auto permission mode.
+- **A guard on `rm -r`:** a hook stops Claude from recursively deleting the project folder, a folder at its top, or a git repo inside it.
 - **Commits as your GitHub noreply address**, so a push is never rejected for publishing a private email. Setup reads the account with `gh api user` and leaves an identity you already set.
 - **Chromium, PowerShell (`pwsh`) and [prek](https://github.com/j178/prek) installed** in every sandbox before Claude starts, alongside the Claude Code update (about a minute). If an install fails, the launch says so and how to retry.
 - **Skills installed for you:** [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's own [`/clean-git`](skills/clean-git/SKILL.md), [`/clean-repo`](skills/clean-repo/SKILL.md), [`/clean-docs`](skills/clean-docs/SKILL.md), [`/create-human-guide`](skills/create-human-guide/SKILL.md), [`/land`](skills/land/SKILL.md) and [`/update-readme`](skills/update-readme/SKILL.md), refreshed daily.
@@ -389,8 +393,8 @@ Each `claude` run:
 1. **Cleans up** stopped sandboxes left from earlier runs (for example a window closed with the X button): saves their history, then deletes them. If the save fails, it warns you and keeps the sandbox to retry on the next run.
 2. **Creates** a sandbox named `claude-<folder>-<hash>-<id>`. The hash of the full path keeps `D:\Dev\api` and `D:\Work\api` apart. The random id lets several windows share a folder.
    Then, at most once a day, it deletes every image no sandbox uses, running or stopped. `sbx` keeps each version of the Claude image it downloads and never deletes old ones, which can add up to tens of GB. The new sandbox's own image is in use by then, so it's kept.
-3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, adds the sandbox's working rules to Claude's instructions, sets the git identity, makes git ignore the empty `shim-start.lock` that sbx leaves in each workspace, installs Chromium, PowerShell and prek, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
-4. **Starts Claude** with `sbx exec`. It doesn't use `sbx run`, because that always adds `--dangerously-skip-permissions`, which overrides any permission mode.
+3. **Prepares** the sandbox: copies in `sandbox/` and that folder's history, then runs `sandbox/setup.sh`. Setup restores the history, adds the sandbox's working rules to Claude's instructions, sets the git identity, makes git ignore the empty `shim-start.lock` that sbx leaves in each workspace, installs the `rm -r` guard hook, installs Chromium, PowerShell and prek, updates Claude Code and applies your defaults. If any of this fails, Claude isn't started and the message says why. Earlier sessions are mounted read-only when the sandbox is created.
+4. **Starts Claude** in the sandbox, with your arguments and the permission mode from your defaults.
 5. **On exit**, including Ctrl+C, copies the history back out and deletes the sandbox. If the save fails, it warns you and stops the sandbox instead, so the next run can retry.
 
 **History store:** `%LOCALAPPDATA%\claude-sandbox\history\` on Windows (shared by PowerShell and Git Bash), or `~/.local/share/claude-sandbox/history/` on Linux/macOS (under `$XDG_DATA_HOME` instead, if you set it). There's one folder per project, holding session files (`projects/`) and prompt history (`history.jsonl`). Delete a project's folder to forget its history.
@@ -441,6 +445,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 | Ubuntu/Debian: `gh` fails with API errors | It's the distro's `gh` 2.45/2.46. Install it from GitHub's repository, as in the [quick start](#you-do-this-once). |
 | A fix you pulled doesn't seem to apply | The wrapper's messages show its commit, as in `claude-sandbox (3fd4520): starting ...`. Compare it with `git -C <cloned folder> log -1 --format=%h`. If they differ, open a new terminal so the wrapper reloads. If they match and the commit is old, run `git pull` in that folder. |
 | `claude` starts normal Claude | The wrapper isn't loaded: `Get-Command claude` shows `Application`, or `type claude` shows a file path. Check the profile line, including the leading `. ` (PowerShell), or the `source` line in `~/.bashrc` / `~/.zshrc`. Then open a new terminal. |
+| `claude-local` isn't recognized | The wrapper only defines it when Claude Code is installed on the host and on your `PATH` when the terminal opens. Check with `Get-Command claude -All` (PowerShell) or `type -a claude` (bash): there should be an `Application` row or a file path besides the function. If not, install Claude Code on the host (Windows: `winget install Anthropic.ClaudeCode`), then open a new terminal. |
 | `error: not signed in to Docker` | `sbx login` |
 | `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host: `sbx secret set github -t "$(gh auth token)"`, then exit and restart `claude`. If the token itself expired, run `gh auth login` first. |
 | Requests to a site fail or hang | `sbx policy approval ls`, or `sbx policy allow network <host>` |
@@ -463,7 +468,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
    - `dnf`: `sudo dnf remove docker-sbx`
    - Tarball: `rm -rf ~/.docker/sbx`, and remove the `PATH` line from `~/.bashrc`
    - macOS: `brew uninstall sbx`
-3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\` on Windows, `~/.local/share/claude-sandbox/` on Linux/macOS), `~/.claude-sandbox-skills-updated`, `~/.claude-sandbox-skills-added` and the folder you cloned.
+3. Optionally delete the saved history (`%LOCALAPPDATA%\claude-sandbox\` on Windows, `~/.local/share/claude-sandbox/` on Linux/macOS), `~/.claude-sandbox-skills-updated`, `~/.claude-sandbox-skills-added`, `~/.claude-sandbox-images-pruned` and the folder you cloned.
 
 ## Issues
 
