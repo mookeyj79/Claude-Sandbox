@@ -21,7 +21,7 @@ Done when `git status --short` shows nothing of this change left uncommitted.
 
 `git push -u origin <branch>`. If the branch already has an open PR (`gh pr view --json number,state`), use that one and go to step 3. Otherwise write the body with the `pr` skill, or as a short summary of what changed and why if it isn't installed, and create the PR with `gh pr create --base <default> --title ... --body-file <file>`.
 
-To edit an existing body, read it with `gh api repos/<owner>/<repo>/pulls/<n> --jq .body`. `gh pr view` prints a `hint:` block on stderr, and a reader that merges stderr into stdout (the REPL's `$`) writes the hint back into the body.
+To edit an existing body, read it with stderr dropped: `gh api repos/<owner>/<repo>/pulls/<n> --jq .body 2>/dev/null`. gh prints a `hint:` block on stderr for any PR call, and a reader that merges stderr into stdout (the REPL's `$`) writes the hint back into the body.
 
 ## 3. Wait for CI
 
