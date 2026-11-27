@@ -314,3 +314,14 @@ tools_result() { tail -n 1 "$HOME/.cache/claude-sandbox/tools.log"; }
     run_setup = = = 2>/dev/null
     [ "$(cat "$HOME/.config/git/ignore")" = /shim-start.lock ]
 }
+
+@test "installs the rm guard hook, after hooks already there, once on a rerun" {
+    echo '{"hooks":{"PreToolUse":[{"matcher":"Edit","hooks":[{"type":"command","command":"other"}]}]}}' > "$HOME/.claude/settings.json"
+    run_setup = = = 2>/dev/null
+    run_setup = = = 2>/dev/null
+    [ -f "$HOME/.claude/guard-rm.py" ]
+    [ "$(setting '.hooks.PreToolUse | length')" = 2 ]
+    [ "$(setting '.hooks.PreToolUse[0].hooks[0].command')" = other ]
+    [ "$(setting '.hooks.PreToolUse[1].matcher')" = Bash ]
+    [ "$(setting '.hooks.PreToolUse[1].hooks[0].command')" = "python3 $HOME/.claude/guard-rm.py" ]
+}

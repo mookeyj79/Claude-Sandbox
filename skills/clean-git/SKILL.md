@@ -11,7 +11,9 @@ Tidy the current repo: land open PRs, then sweep away what they leave behind. Me
 
 A PR that is not green stays open; note why for the report.
 
-Done when every open PR is either merged or has a recorded reason it was left open.
+Each merge can start workflows that open a follow-up PR (a bot's screenshot or lockfile PR). After the last merge, wait for the runs on the default branch to finish (`gh run list --branch <default>`), list open PRs again, and treat new ones the same way.
+
+Done when every open PR, including those the merges opened, is either merged or has a recorded reason it was left open.
 
 ## 2. Prune worktrees
 
@@ -21,12 +23,16 @@ Keep the worktree this session is running in, and any worktree with uncommitted 
 
 ## 3. Prune branches
 
-Switch the main worktree to the default branch and fast-forward it (`git pull --ff-only`). A local branch is **dead** when `git branch --merged <default>` lists it, or its upstream shows `[gone]` in `git branch -vv` and a merged PR exists for it (`gh pr list --state merged --head <branch>`). Delete dead branches with `git branch -d`; use `-D` only for squash-merged branches confirmed by that merged PR.
+Switch the main worktree to the default branch and fast-forward it (`git pull --ff-only`). Fetch every PR once and match branches to them locally, rather than calling `gh` per branch: `gh pr list --state all --limit 500 --json number,state,headRefName`. A local branch is **dead** when `git branch --merged <default>` lists it, or its upstream shows `[gone]` in `git branch -vv` and a merged PR exists for it (`gh pr list --state merged --head <branch>`). Delete dead branches with `git branch -d`; use `-D` only for squash-merged branches confirmed by that merged PR.
 
 A branch with commits found nowhere else and no merged PR is live work: keep it and report it.
 
-Done when every local branch other than the default is deleted or listed in the report with a reason.
+Then walk the remote branches (`git branch -r`). Delete one with `git push origin --delete <branch>` when its PR was merged; one with no merged PR is live work, kept and reported like a local one.
+
+Done when every branch other than the default, local and remote, is deleted or listed in the report with a reason.
 
 ## 4. Report
 
 One short summary: PRs merged, PRs left open (with reason), worktrees and branches removed, and anything kept that the user may want to look at.
+
+When the user asked for everything but the default branch gone and something was kept, open the report with it, and ask one direct question per item: finish and merge, delete, or keep.

@@ -132,6 +132,8 @@ note_sandbox_rules() {
 - A non-HTTP connection the proxy blocks still opens, then returns nothing. On an empty reply from a host or port, run `curl -si http://<host>:<port>/` and read the 403 body. If it says `Blocked by local rule` for `host.docker.internal`, an old deny rule is beating the allow: point the user at https://github.com/mookeyj79/Claude-Sandbox/blob/main/NETWORK-POLICY.md.
 - `prek` is installed: use it for a repo's `.pre-commit-config.yaml` (`prek run --all-files`, `prek install`) instead of installing `pre-commit`.
 - `pkill -f` and `pgrep -f` patterns also match the shell running them, which kills your own command. Stop background tasks with TaskStop, or kill by PID (`ss -ltnp` finds a port's).
+- `GH_TOKEN` comes from the host, so `gh auth refresh` can't add scopes in here. When a call needs a scope the token lacks (`delete_repo`, admin), hand that one step to the user: the web UI, or `gh` on the host.
+- A hook blocks `rm -r` on the project folder, a folder at its top, or a repo inside it. When the user asks for that deletion, they run it themselves with `! rm -rf <path>`.
 RULES
 }
 
@@ -256,6 +258,20 @@ resolve_setting() {
     esac
 }
 
+# A PreToolUse hook that stops a recursive rm from deleting the project folder, a folder at its
+# top or a repo inside it (guard-rm.py says how). Sibling repos in a home folder may hold work
+# pushed nowhere. Written after any hook already there; replaces its own entry on a rerun.
+install_rm_guard() {
+    local f="$c/settings.json" cmd="python3 $c/guard-rm.py"
+    [ -f "$stage/guard-rm.py" ] || return 0
+    cp "$stage/guard-rm.py" "$c/guard-rm.py" || return 1
+    [ -s "$f" ] || echo '{}' > "$f"
+    jq --arg cmd "$cmd" '
+        .hooks.PreToolUse = ([(.hooks.PreToolUse // [])[] | select(any(.hooks[]?; .command == $cmd) | not)]
+            + [{matcher: "Bash", hooks: [{type: "command", command: $cmd, timeout: 10}]}])
+    ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
 # Default model / effort / permission mode, the status line, and Code Mode (experimental; it can
 # only be turned on from user settings, not a project's). Flags passed to `claude` still
 # override these.
@@ -295,3 +311,4 @@ start_tools
 update_claude
 finish_tools
 write_settings "$@" || { echo "claude-sandbox: couldn't write $c/settings.json" >&2; exit 1; }
+install_rm_guard || echo "claude-sandbox: WARNING: couldn't install the rm guard hook in $c/settings.json" >&2
