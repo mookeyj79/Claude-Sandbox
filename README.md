@@ -349,7 +349,8 @@ To also copy in skills you already have locally (`~/.claude/skills`, `~/.agents/
 | `claude` | Fresh sandbox for this folder, history restored, Claude starts. Deleted on exit. |
 | `claude --resume` / `claude -c` | Resume an earlier session from this folder. |
 | `claude "do X"` | Start with a prompt. |
-| `claude.exe ...` (PowerShell) / `command claude ...` (bash) | Run the real Claude Code on the host. |
+| `claude-local ...` | Run the real Claude Code on the host, with the same arguments. Only there if Claude Code is installed on the host when the terminal opens. |
+| `claude.exe ...` (PowerShell) / `command claude ...` (bash) | The same, even when `claude-local` isn't there. |
 | `$env:CLAUDE_NO_SANDBOX='1'` / `export CLAUDE_NO_SANDBOX=1` | Use the host for the rest of this shell session. |
 
 ### Defaults

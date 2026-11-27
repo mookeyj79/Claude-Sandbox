@@ -16,7 +16,8 @@
 #   $env:CLAUDE_SANDBOX_SHARE_HISTORY    = '0'        # keep them out (this folder's own sessions are still restored)
 #
 # Escape hatches:
-#   claude.exe ...                  run the real Claude Code on the host
+#   claude-local ...                run the real Claude Code on the host (defined only if one is installed)
+#   claude.exe ...                  the same, even when claude-local isn't defined
 #   $env:CLAUDE_NO_SANDBOX = '1'    make `claude` use the host for this shell session
 
 $script:ClaudeSandboxDir   = $PSScriptRoot
@@ -362,4 +363,19 @@ function claude {
         Write-Host "claude-sandbox: saving history and removing $name" -ForegroundColor DarkGray
         $null = Close-ClaudeSandbox $name
     }
+}
+
+# `claude-local`: the real Claude Code on the host, with the same arguments as `claude`. Defined
+# only if one is installed, checked when this file is loaded, so open a new terminal after
+# installing it.
+if (Get-Command claude -CommandType Application -ErrorAction SilentlyContinue) {
+    function claude-local {
+        # Named to match `claude`, not Verb-Noun.
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '')]
+        param()
+        $real = Get-Command claude -CommandType Application -ErrorAction Stop | Select-Object -First 1
+        & $real.Source @args
+    }
+} else {
+    Remove-Item function:claude-local -ErrorAction SilentlyContinue
 }
