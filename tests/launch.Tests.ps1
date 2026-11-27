@@ -6,6 +6,7 @@ BeforeAll {
 
 Describe 'claude' {
     BeforeEach {
+        $savedPath = $env:PATH
         $root = Initialize-FakeSbx
         . (Join-Path $RepoRoot 'claude-sandbox.ps1')
         $script:ClaudeSandboxStateDir = Join-Path $root 'home'
@@ -24,6 +25,7 @@ Describe 'claude' {
         }
     }
     AfterEach {
+        $env:PATH = $savedPath
         Pop-Location
         Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
     }
@@ -81,6 +83,36 @@ Describe 'claude' {
         $out = (claude 6>&1) -join "`n"
         $out | Should -Match "cleaning up leftover sandbox $key-old1"
         Join-Path $store 'projects/p/s1.jsonl' | Should -Exist
+    }
+
+    It 'defines claude-local to run the host claude, if there is one' {
+        $bin = Join-Path $root 'hostbin'
+        New-Item -ItemType Directory -Force $bin | Out-Null
+        if ([IO.Path]::DirectorySeparatorChar -eq '\') {
+            Set-Content (Join-Path $bin 'claude.cmd') '@echo host claude %*'
+        } else {
+            Set-Content (Join-Path $bin 'claude') "#!/bin/sh`necho host claude `"`$*`""
+            chmod +x (Join-Path $bin 'claude')
+        }
+        $env:PATH = $bin + [IO.Path]::PathSeparator + $env:PATH
+        . (Join-Path $RepoRoot 'claude-sandbox.ps1')
+        claude-local -p hi | Should -Be 'host claude -p hi'
+        Get-SbxCall | Should -BeNullOrEmpty
+    }
+
+    It "doesn't define claude-local when there's no host claude" {
+        # A fresh shell, with every folder holding a claude taken off PATH.
+        $sep = [IO.Path]::PathSeparator
+        $env:PATH = ($env:PATH -split $sep | Where-Object {
+            $_ -and -not (Get-ChildItem -Path $_ -Filter 'claude*' -File -ErrorAction SilentlyContinue)
+        }) -join $sep
+        $shell = (Get-Process -Id $PID).Path
+        $defined = & $shell -NoProfile -Command {
+            param($Wrapper)
+            . $Wrapper
+            [bool](Get-Command claude-local -ErrorAction SilentlyContinue)
+        } -args (Join-Path $RepoRoot 'claude-sandbox.ps1')
+        $defined | Should -BeFalse
     }
 
     It 'says which commit of the wrapper is running' {

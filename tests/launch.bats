@@ -18,6 +18,14 @@ setup() {
 
 calls_matching() { sbx_calls | grep -E "$1" || true; }
 
+# A host claude that says what it was given, on PATH.
+host_claude() {
+    mkdir -p "$BATS_TEST_TMPDIR/hostbin"
+    printf '#!/bin/sh\necho "host claude $*"\n' > "$BATS_TEST_TMPDIR/hostbin/claude"
+    chmod +x "$BATS_TEST_TMPDIR/hostbin/claude"
+    PATH="$BATS_TEST_TMPDIR/hostbin:$PATH"
+}
+
 @test "runs claude in a new sandbox, then saves history and deletes it" {
     mkdir -p "$store/projects/p"; echo s0 > "$store/projects/p/s0.jsonl"
     run claude --resume
@@ -98,12 +106,30 @@ EOF
 }
 
 @test "CLAUDE_NO_SANDBOX runs the host claude" {
-    mkdir -p "$BATS_TEST_TMPDIR/hostbin"
-    printf '#!/bin/sh\necho "host claude $*"\n' > "$BATS_TEST_TMPDIR/hostbin/claude"
-    chmod +x "$BATS_TEST_TMPDIR/hostbin/claude"
-    PATH="$BATS_TEST_TMPDIR/hostbin:$PATH" CLAUDE_NO_SANDBOX=1 run claude -p hi
+    host_claude
+    CLAUDE_NO_SANDBOX=1 run claude -p hi
     [ "$output" = "host claude -p hi" ]
     [ -z "$(sbx_calls)" ]
+}
+
+@test "claude-local runs the host claude, if there is one" {
+    host_claude
+    source "$REPO_ROOT/claude-sandbox.sh"
+    run claude-local -p "hi there"
+    [ "$output" = "host claude -p hi there" ]
+    [ -z "$(sbx_calls)" ]
+}
+
+@test "claude-local isn't defined when there's no host claude" {
+    # Only what sourcing the wrapper needs, so a real claude on this machine isn't found.
+    mkdir -p "$BATS_TEST_TMPDIR/nobin"
+    ln -s "$(command -v dirname)" "$BATS_TEST_TMPDIR/nobin/dirname"
+    claude-local() { :; }   # left over from an earlier source
+    local saved="$PATH"
+    PATH="$BATS_TEST_TMPDIR/nobin"
+    source "$REPO_ROOT/claude-sandbox.sh"
+    PATH="$saved"
+    ! type claude-local >/dev/null 2>&1
 }
 
 @test "says which commit of the wrapper is running" {

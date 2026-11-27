@@ -18,7 +18,8 @@
 #   CLAUDE_SANDBOX_SHARE_HISTORY=0   keep them out (this folder's own sessions are still restored)
 #
 # Escape hatches:
-#   command claude ...        run the real Claude Code on the host
+#   claude-local ...          run the real Claude Code on the host (defined only if one is installed)
+#   command claude ...        the same, even when claude-local isn't defined
 #   CLAUDE_NO_SANDBOX=1       make `claude` use the host
 #
 # Git Bash note: run it inside Windows Terminal (the old mintty window has no real console).
@@ -361,3 +362,12 @@ claude() {
     # Subshell so the cleanup trap fires on exit / Ctrl+C without touching your shell.
     ( _claude_sandbox_main "$@" )
 }
+
+# `claude-local`: the real Claude Code on the host, with the same arguments as `claude`. Defined
+# only if one is installed, checked when this file is sourced, so open a new terminal after
+# installing it. The subshell drops the `claude` function, so `command -v` finds only a real one.
+if (unset -f claude; command -v claude) >/dev/null 2>&1; then
+    claude-local() { command claude "$@"; }
+else
+    unset -f claude-local 2>/dev/null
+fi
