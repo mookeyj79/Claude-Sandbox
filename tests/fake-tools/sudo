@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: sudo, which just runs the command.
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+exec "$@"

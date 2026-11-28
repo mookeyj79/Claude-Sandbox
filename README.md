@@ -20,6 +20,7 @@ Run Claude Code in an isolated [Docker Sandbox](https://docs.docker.com/ai/sandb
 
 | File | Purpose |
 |---|---|
+| `install.ps1`, `install.sh` | The install for Windows and for Ubuntu/Debian (see [You do this once](#you-do-this-once)) |
 | `claude-sandbox.ps1` | PowerShell wrapper (Windows) |
 | `claude-sandbox.sh` | bash/zsh wrapper (Linux, macOS, Git Bash) |
 | `sandbox/` | Everything that runs inside the sandbox. The wrappers copy it into each new sandbox. |
@@ -42,6 +43,67 @@ Keep these files and `skills/` together, as the clone leaves them: the wrappers 
 
 First check the [requirements](#1-requirements). On Windows, that means Windows Hypervisor Platform must be enabled. On Linux, it means KVM must be available.
 
+**Windows** (Windows PowerShell 5.1 or PowerShell 7):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/mookeyj79/Claude-Sandbox/main/install.ps1)))
+```
+
+**Ubuntu 24.04+ or Debian 13+:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mookeyj79/Claude-Sandbox/main/install.sh | bash
+```
+
+The install does every step in [Setup](#setup) for you:
+
+- It installs sbx, Git and the GitHub CLI (with winget, or apt), and PowerShell 7 on Windows. On Linux it adds you to the `kvm` group.
+- It signs you in to GitHub and Docker, each in your browser, and sets the network policy and GitHub access for sandboxes.
+- It clones this repo to `~/Claude-Sandbox` (set `CLAUDE_SANDBOX_DIR` to put it elsewhere), and loads the wrapper in every new terminal. If you run it from a clone, it uses that clone.
+
+It's safe to run again: anything already done is left alone. If you use [Nowhere](https://github.com/mookeyj79/Nowhere), the wrapper is loaded from Nowhere's local override, and `goto cs` takes you to the clone. Anything the install couldn't do, such as a sign-in with no terminal to ask in, is listed at the end with the command to run.
+
+On Fedora, RHEL, macOS or another distro, or to do it by hand, follow [By hand](#by-hand).
+
+**Then, in a new terminal** (on Windows, PowerShell 7: `pwsh`):
+
+```
+cd <some project>
+claude          # first run downloads the sandbox image (~430 MB)
+/login          # inside Claude, once. Later sandboxes start signed in.
+```
+
+Setup is done. Check it worked with [Verify it's working](#verify-its-working). The [Setup](#setup) section below explains each step.
+
+### Every `claude` run does this for you
+
+| What | When |
+|---|---|
+| Installs [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's [skills](#skills) | First run. A new skill in this repo is installed on the next run after a `git pull`. |
+| Refreshes installed skills | At most once a day, in the background |
+| Removes skills that were deleted or renamed in this repo | The next run after a `git pull` |
+| Saves and deletes sandboxes left over from earlier runs | Every run |
+| Creates a fresh sandbox, restores this folder's history, mounts earlier sessions read-only | Every run |
+| Deletes sandbox images no sandbox uses, which `sbx` otherwise keeps forever | At most once a day, after the new sandbox is created |
+| Updates Claude Code, sets Opus / medium effort / auto mode, installs the status line | Every run, inside the sandbox |
+| Saves history back to your machine and deletes the sandbox | When Claude exits |
+
+### You redo these only when something changes
+
+| When | Run |
+|---|---|
+| You want a newer version of these scripts | `git pull` in the cloned folder, then open a new terminal |
+| A site you need is blocked | `sbx policy allow network <host>` |
+| `sbx` itself is out of date | See [Updating](#updating) |
+
+---
+
+## Setup
+
+### By hand
+
+The same steps the install runs, for systems it doesn't cover.
+
 **Windows (PowerShell):**
 
 ```powershell
@@ -56,7 +118,7 @@ sbx login                                    # Docker
 
 # 3. Sandbox settings, shared by every sandbox
 sbx policy init balanced                     # network policy
-sbx secret set github -t "$(gh auth token)"  # lets sandboxes git push and use gh
+sbx secret set github --command 'gh auth token'  # lets sandboxes git push and use gh
 
 # 4. Get the scripts and load the wrapper in every new terminal
 git clone https://github.com/mookeyj79/Claude-Sandbox.git
@@ -117,7 +179,7 @@ sbx login                                    # Docker
 
 # 4. Sandbox settings, shared by every sandbox
 sbx policy init balanced                     # network policy
-sbx secret set github -t "$(gh auth token)"  # lets sandboxes git push and use gh
+sbx secret set github --command 'gh auth token'  # lets sandboxes git push and use gh
 
 # 5. Get the scripts and load the wrapper in every new terminal
 git clone https://github.com/mookeyj79/Claude-Sandbox.git
@@ -128,41 +190,7 @@ Other distros (Arch, openSUSE, Debian 12, ...): see [Install `sbx`](#2-install-s
 
 **macOS (Sonoma 14+, Apple silicon):** `brew trust docker/tap && brew install docker/tap/sbx git gh`, then steps 3–5 above.
 
-**Then, in a new terminal:**
-
-```
-cd <some project>
-claude          # first run downloads the sandbox image (~430 MB)
-/login          # inside Claude, once. Later sandboxes start signed in.
-```
-
-Setup is done. Check it worked with [Verify it's working](#verify-its-working). The [Setup](#setup) section below explains each step.
-
-### Every `claude` run does this for you
-
-| What | When |
-|---|---|
-| Installs [Matt Pocock's skills](https://github.com/mattpocock/skills) and this repo's [skills](#skills) | First run. A new skill in this repo is installed on the next run after a `git pull`. |
-| Refreshes installed skills | At most once a day, in the background |
-| Removes skills that were deleted or renamed in this repo | The next run after a `git pull` |
-| Saves and deletes sandboxes left over from earlier runs | Every run |
-| Creates a fresh sandbox, restores this folder's history, mounts earlier sessions read-only | Every run |
-| Deletes sandbox images no sandbox uses, which `sbx` otherwise keeps forever | At most once a day, after the new sandbox is created |
-| Updates Claude Code, sets Opus / medium effort / auto mode, installs the status line | Every run, inside the sandbox |
-| Saves history back to your machine and deletes the sandbox | When Claude exits |
-
-### You redo these only when something changes
-
-| When | Run |
-|---|---|
-| Your GitHub token changes (new `gh auth login`, expired or rotated token) | `sbx secret set github -t "$(gh auth token)"` |
-| You want a newer version of these scripts | `git pull` in the cloned folder, then open a new terminal |
-| A site you need is blocked | `sbx policy allow network <host>` |
-| `sbx` itself is out of date | See [Updating](#updating) |
-
----
-
-## Setup
+The sections below explain each step.
 
 ### 1. Requirements
 
@@ -194,7 +222,7 @@ id -nG | grep -w kvm    # after logging back in: prints your groups, including k
 
 **macOS:** Sonoma 14 or newer, on Apple silicon.
 
-You don't need Docker Desktop or Docker Engine. You do need [Git](https://git-scm.com/), to clone the scripts, and the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`, for [GitHub access](#5-github-access). The [quick start](#you-do-this-once) installs both for each OS. On Ubuntu and Debian, install `gh` from GitHub's repository as shown there: the `gh` in the distro's own repositories (2.45/2.46) no longer works with GitHub's API.
+You don't need Docker Desktop or Docker Engine. You do need [Git](https://git-scm.com/), to clone the scripts, and the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`, for [GitHub access](#5-github-access). The [install](#you-do-this-once) puts both on for you; [By hand](#by-hand) has the commands for each OS. On Ubuntu and Debian, install `gh` from GitHub's repository as shown there: the `gh` in the distro's own repositories (2.45/2.46) no longer works with GitHub's API.
 
 ### 2. Install `sbx`
 
@@ -270,14 +298,14 @@ Doing a lot of web research, or need Claude to reach a service on your machine? 
 ### 5. GitHub access
 
 ```
-sbx secret set github -t "$(gh auth token)"
+sbx secret set github --command 'gh auth token'
 ```
 
-This copies your host GitHub CLI token into `sbx`, and its proxy then adds it to Git and `gh` traffic from every sandbox. Without it, `git push` fails with `could not read Username for 'https://github.com'` or a rejected-token error. You need the [GitHub CLI](https://cli.github.com/) installed and signed in on the host (`gh auth login`).
+This tells `sbx` to get your GitHub token by running `gh auth token` on your machine, and its proxy then adds the token to Git and `gh` traffic from every sandbox. Without it, `git push` fails with `could not read Username for 'https://github.com'` or a rejected-token error. You need the [GitHub CLI](https://cli.github.com/) installed and signed in on the host (`gh auth login`).
 
 **Run it once, not every time.** The secret is global, and every `claude` run creates a new sandbox, so each one picks it up. `gh auth status` inside the sandbox will still say "not logged in". That's expected, because the token is added at the network level.
 
-**Run it again if the token changes:** after you sign in again with `gh auth login`, rotate a personal access token, or the token expires or is revoked. The secret is a copy taken when you ran the command, so it doesn't follow those changes. Sandboxes that are already running keep the old token. Exit Claude and start it again to pick up the new one.
+**A new token needs nothing.** `sbx` runs `gh auth token` again when its cached copy is more than 55 minutes old, so a new `gh auth login` or a rotated token is picked up on its own. If you stored the token itself earlier (`sbx secret set github -t ...`), switch with `sbx secret set github --command 'gh auth token' -f`.
 
 ### 6. Get the scripts
 
@@ -442,12 +470,12 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 |---|---|
 | `sbx: command not found` after installing | Close **all** terminal windows and open a new one. With the Linux tarball, check that `~/.docker/sbx/bin` is on your `PATH`. |
 | Linux: sandbox won't start, with an error about `/dev/kvm` or permission denied | Check [KVM](#1-requirements): `/dev/kvm` must exist, and `id -nG` must list `kvm`. After `usermod -aG kvm`, log out and back in. |
-| Ubuntu/Debian: `gh` fails with API errors | It's the distro's `gh` 2.45/2.46. Install it from GitHub's repository, as in the [quick start](#you-do-this-once). |
+| Ubuntu/Debian: `gh` fails with API errors | It's the distro's `gh` 2.45/2.46. Install it from GitHub's repository, as in [By hand](#by-hand); the install does this for you. |
 | A fix you pulled doesn't seem to apply | The wrapper's messages show its commit, as in `claude-sandbox (3fd4520): starting ...`. Compare it with `git -C <cloned folder> log -1 --format=%h`. If they differ, open a new terminal so the wrapper reloads. If they match and the commit is old, run `git pull` in that folder. |
 | `claude` starts normal Claude | The wrapper isn't loaded: `Get-Command claude` shows `Application`, or `type claude` shows a file path. Check the profile line, including the leading `. ` (PowerShell), or the `source` line in `~/.bashrc` / `~/.zshrc`. Then open a new terminal. |
 | `claude-local` isn't recognized | The wrapper only defines it when Claude Code is installed on the host and on your `PATH` when the terminal opens. Check with `Get-Command claude -All` (PowerShell) or `type -a claude` (bash): there should be an `Application` row or a file path besides the function. If not, install Claude Code on the host (Windows: `winget install Anthropic.ClaudeCode`), then open a new terminal. |
 | `error: not signed in to Docker` | `sbx login` |
-| `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host: `sbx secret set github -t "$(gh auth token)"`, then exit and restart `claude`. If the token itself expired, run `gh auth login` first. |
+| `git push` fails: `could not read Username`, or the GitHub token is rejected | On the host, check `gh auth status` (run `gh auth login` if it's signed out), then `sbx secret set github --command 'gh auth token' -f`. Exit and restart `claude`. |
 | Requests to a site fail or hang | `sbx policy approval ls`, or `sbx policy allow network <host>` |
 | "not a tty" errors in Git Bash | Use Git Bash inside Windows Terminal, not the old mintty window. |
 | `couldn't mount earlier sessions` on startup | `sbx` rejected the read-only mounts, so Claude started without them and the rest works as normal. The message includes the reason. These mounts need `sbx` 0.51.0 or newer, so check `sbx version` first and [upgrade](#updating) if it's older. |
@@ -461,7 +489,7 @@ The cleanup step leaves **running** sandboxes alone, since they may belong to an
 
 ## Uninstall
 
-1. Remove the wrapper line from your PowerShell profile or `~/.bashrc`.
+1. Remove the wrapper line from your PowerShell profile or `~/.bashrc` / `~/.zshrc`. If the install added it, remove the block between `# >>> claude-sandbox >>>` and `# <<< claude-sandbox <<<` there, or in Nowhere's local override (`~/.config/nowhere/local.ps1` or `local.zsh`).
 2. `sbx reset` deletes all sandboxes, secrets and the network policy. Then uninstall `sbx`:
    - Windows: `winget uninstall Docker.sbx`
    - `apt`: `sudo apt remove docker-sbx`

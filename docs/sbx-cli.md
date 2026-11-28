@@ -182,6 +182,77 @@ The table, real output. A stopped sandbox has a hollow `○`, a running one `●
 ]
 ```
 
+## For the install: `sbx version`, `sbx diagnose`, `sbx login`, `sbx policy` and `sbx secret`
+
+`install.sh` and `install.ps1` call these. Real output from sbx 0.54.1 on Windows, shortened.
+
+`sbx version` prints the version, then the commit:
+
+```
+v0.54.1 3df896d5784200e8dfe6dca28ebd7102fe064169
+```
+
+sbx has no `whoami` or status command, and `sbx login --no-input` fails the same way whether or not you're signed in:
+
+```
+❯ sbx login --no-input
+
+  error: interactive sign-in is disabled by --no-input
+    try: echo "$DOCKER_PAT" | sbx login --username <user> --password-stdin
+```
+
+`sbx diagnose` is what reports both the sign-in and the global network policy, in its CONNECTION section. It takes a few seconds:
+
+```
+❯ sbx diagnose
+
+  INSTALLATION
+    ✓ CLI binary — found
+    ✓ Binary version — v0.54.1
+    ✓ Daemon — healthy
+        version v0.54.1
+  ...
+  CONNECTION
+    ✓ Version match — v0.54.1
+    ✓ Socket — path configured
+    ✓ SSH client config — not configured
+    ⊘ Claude Desktop SSH shell — local SSH not configured
+    ✓ Authentication — authenticated
+    ✓ Global network policy — initialized
+    ✓ TLS trust store — not overridden in this shell
+
+    17 passed · 3 skipped
+```
+
+The install counts you as signed in only on an `Authentication <mark> authenticated` line, and the policy as set only on `Global network policy <mark> initialized`. The signed-out and not-initialized lines aren't captured yet, so anything else means "not done". Windows PowerShell may decode the marks and the dash as other characters, so the patterns don't match on them.
+
+`sbx policy init --help`: `init allow-all|balanced|deny-all` is "a one-time setup. Use sbx policy reset to clear all policies and start over." What a second `init` does isn't captured, so the install runs it only when `diagnose` doesn't say initialized. `sbx policy ls` lists the global policies as `local` policies that apply to `all`:
+
+```
+  POLICY                                 SOURCE   APPLIES TO                          SUMMARY
+  2c36de72-5d19-4c32-bfed-477d9f113ec6   kit      sandbox:claude-example-48af6ad7-2d8i   network: 8 allow
+  default-deny-all                       local    all                                 network: deny when no rule decides
+  local-policy                           local    all                                 network: 213 allow, 7 deny; filesystem read: 1 allow; filesystem write: 1 allow
+```
+
+`sbx secret ls` never shows a value. A secret stored with `-t` shows as `(stored)`; how a `--command` secret shows isn't captured:
+
+```
+  SCOPE                                TYPE      NAME        SECRET
+  (global)                             service    github      (stored)
+  claude-example-c0a307ea-fry4         service    github      (stored)
+  (global)                             service    anthropic   (oauth configured)
+```
+
+`sbx secret set [SERVICE]` (from `--help`): service secrets are global unless `--sandbox` is given. `--command <cmd>` stores a command instead of a value; sbx runs it on the host, from a fresh temporary folder, when it needs the value, and caches the value for `--refresh` (default `55m`). It runs the command once when storing, and fails if it fails:
+
+```
+  error: verify command failed (exit_status): command: exit status 1 (use --show-error to show the resolver error); use --no-verify to store without resolving now
+    try: sbx secret set --help
+```
+
+`-f` / `--force` overwrites an existing secret without asking, so the install runs `sbx secret set github --command 'gh auth token' -f --no-input` on every run. `-t` puts the value in shell history. `sbx secret set github --command --help` doesn't show help: it stores `--help` as the command, and the verify step fails.
+
 ## Not captured yet
 
 The wrappers also call these. Their behaviour is known only from the wrappers working in practice, not from captured `--help` or error output:
@@ -190,4 +261,12 @@ The wrappers also call these. Their behaviour is known only from the wrappers wo
 - `sbx cp <src> <dest>`: one side is `<sandbox>:<path>`. Files copied in arrive owned by root.
 - `sbx exec [-it] <sandbox> <command...>`: used instead of `sbx run`, which always adds `--dangerously-skip-permissions`.
 - `sbx stop <sandbox>` and `sbx rm --force <sandbox>`.
-- `sbx policy ...`: see [`NETWORK-POLICY.md`](../NETWORK-POLICY.md).
+- `sbx policy allow`, `deny` and the rest: see [`NETWORK-POLICY.md`](../NETWORK-POLICY.md).
+- `sbx login` (interactive), as the install runs it when `sbx diagnose` doesn't say authenticated.
+
+For the install, still to capture on a real machine:
+
+- the `Authentication` and `Global network policy` lines of `sbx diagnose` when signed out, and on a fresh install with no policy;
+- what `sbx policy init balanced` does when a policy already exists;
+- how `sbx secret ls` shows a secret stored with `--command`;
+- whether, on Windows, sbx finds `gh` on the `PATH` when it runs `gh auth token` from its temporary folder, right after a winget install of the GitHub CLI.

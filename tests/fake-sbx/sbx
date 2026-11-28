@@ -21,6 +21,15 @@ All state lives under $FAKE_SBX_DIR:
   images                     the Images table rows for `sbx df --verbose`, one per line:
                                <repository> <tag> <image id> <containers>
   image-<id>                 if it says fail, `sbx template rm <id>` fails
+  version                    what `sbx version` prints (default: v0.54.1 and a commit)
+  signed-in                  if present, sbx diagnose reports you signed in; `sbx login` creates it
+  login-fails                if present, `sbx login` fails and signs nobody in
+  policy-set                 if present, the global network policy is initialized; `sbx policy init`
+                               creates it
+  policy-init-fails          if present, `sbx policy init` fails
+  secret-github              the github secret's source, as `sbx secret set github --command` stored it
+  secret-fails               if present, `sbx secret set` fails its verify step, as when the command
+                               does
 """
 import json
 import os
@@ -162,6 +171,64 @@ def cmd_template(args):
     return 2
 
 
+def out(text):
+    """Print UTF-8 whatever the console's code page, as the real sbx does."""
+    sys.stdout.flush()
+    sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+    sys.stdout.flush()
+
+
+def cmd_diagnose():
+    # The CONNECTION section of the real output (docs/sbx-cli.md), shortened. The signed-out and
+    # not-initialized wording isn't captured; the install treats anything else as not done.
+    signed_in = os.path.exists(os.path.join(STATE, "signed-in"))
+    policy = os.path.exists(os.path.join(STATE, "policy-set"))
+    out("\n  INSTALLATION\n    ✓ CLI binary — found\n    ✓ Daemon — healthy\n")
+    out("  CONNECTION\n    ✓ Version match — v0.54.1")
+    out("    ✓ Authentication — authenticated" if signed_in
+        else "    ✗ Authentication — not authenticated")
+    out("    ✓ Global network policy — initialized" if policy
+        else "    ✗ Global network policy — not initialized")
+    out("\n    17 passed · 3 skipped\n")
+    return 0
+
+
+def cmd_login(args):
+    if "--no-input" in args:   # the real message, whether or not you're signed in
+        print("\n  error: interactive sign-in is disabled by --no-input\n"
+              '    try: echo "$DOCKER_PAT" | sbx login --username <user> --password-stdin', file=sys.stderr)
+        return 1
+    if os.path.exists(os.path.join(STATE, "login-fails")):
+        print("login failed", file=sys.stderr)
+        return 1
+    write(os.path.join(STATE, "signed-in"), "")
+    return 0
+
+
+def cmd_policy(args):
+    if args[:1] == ["init"]:
+        if os.path.exists(os.path.join(STATE, "policy-init-fails")):
+            print("policy init failed", file=sys.stderr)
+            return 1
+        write(os.path.join(STATE, "policy-set"), args[1] if len(args) > 1 else "")
+        return 0
+    print(f"fake sbx: unsupported policy call {args}", file=sys.stderr)
+    return 2
+
+
+def cmd_secret(args):
+    if args[:2] == ["set", "github"] and "--command" in args:
+        if os.path.exists(os.path.join(STATE, "secret-fails")):   # the real message
+            print("\n  error: verify command failed (exit_status): command: exit status 1 (use --show-error to "
+                  "show the resolver error); use --no-verify to store without resolving now\n"
+                  "    try: sbx secret set --help", file=sys.stderr)
+            return 1
+        write(os.path.join(STATE, "secret-github"), args[args.index("--command") + 1])
+        return 0
+    print(f"fake sbx: unsupported secret call {args}", file=sys.stderr)
+    return 2
+
+
 def main(argv):
     with open(os.path.join(STATE, "calls"), "a") as f:
         f.write(json.dumps(argv) + "\n")
@@ -203,6 +270,17 @@ def main(argv):
         return cmd_df(args)
     if cmd == "template":
         return cmd_template(args)
+    if cmd == "version":
+        print(read(os.path.join(STATE, "version"), "v0.54.1 3df896d5784200e8dfe6dca28ebd7102fe064169"))
+        return 0
+    if cmd == "diagnose":
+        return cmd_diagnose()
+    if cmd == "login":
+        return cmd_login(args)
+    if cmd == "policy":
+        return cmd_policy(args)
+    if cmd == "secret":
+        return cmd_secret(args)
     print(f"fake sbx: unsupported command {argv}", file=sys.stderr)
     return 2
 

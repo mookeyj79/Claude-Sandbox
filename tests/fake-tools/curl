@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: curl. -o writes a stand-in file; without it, prints a stand-in key.
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+[ -e "$FAKE_TOOLS_DIR/curl-fails" ] && { echo "curl: (6) Could not resolve host" >&2; exit 6; }
+outfile=""
+while [ $# -gt 0 ]; do
+    case "$1" in -o) outfile=$2; shift 2 ;; *) shift ;; esac
+done
+if [ -n "$outfile" ]; then
+    # get.docker.com, run as REPO_ONLY=1 sh <file>: it only logs that it ran
+    # shellcheck disable=SC2016  # expanded when the stand-in script runs
+    printf 'echo "get-docker REPO_ONLY=$REPO_ONLY" >> "$FAKE_TOOLS_DIR/calls"\n' > "$outfile"
+else
+    echo "fake-key"
+fi
