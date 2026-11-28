@@ -8,6 +8,10 @@ Running Claude Code in a throwaway Docker Sandbox per launch, while keeping sess
 The `claude` function a user's shell loads (bash/zsh or PowerShell) that replaces running Claude on the host with running it in a fresh sandbox. There are two, and they must behave the same.
 _Avoid_: launcher, script
 
+**Install**:
+The re-runnable `install.sh` / `install.ps1` that readies a machine to run the wrapper: tools, sign-ins, sandbox settings, the clone, and loading the wrapper in new shells.
+_Avoid_: setup (that's `sandbox/setup.sh`), bootstrap (Nowhere's), installer
+
 **Project**:
 The host folder `claude` was run from. Sessions, history and sandbox names all belong to a project.
 _Avoid_: workspace, repo

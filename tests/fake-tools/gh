@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: gh auth status, login and token.
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+case "$1 $2" in
+    "auth status") [ -e "$FAKE_TOOLS_DIR/gh-signed-in" ] ;;
+    "auth login") [ -e "$FAKE_TOOLS_DIR/gh-login-fails" ] && exit 1; touch "$FAKE_TOOLS_DIR/gh-signed-in" ;;
+    "auth token") echo gho_fake ;;
+    *) echo "fake gh: unsupported $*" >&2; exit 2 ;;
+esac

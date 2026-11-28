@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: id -u, -un, -nG (this session) and -nG <user> (the account).
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+# shellcheck disable=SC2046  # the group files hold one group per word
+case "$*" in
+    -u) echo "${FAKE_UID:-1000}" ;;
+    -un) echo tester ;;
+    -nG) echo tester $(cat "$FAKE_TOOLS_DIR/session-groups" 2>/dev/null) ;;
+    "-nG tester") echo tester $(cat "$FAKE_TOOLS_DIR/account-groups" 2>/dev/null) ;;
+    *) exit 2 ;;
+esac

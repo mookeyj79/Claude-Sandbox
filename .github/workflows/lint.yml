@@ -27,7 +27,8 @@ jobs:
             Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           }
           # Write-Host is deliberate: coloured status lines for an interactive console.
-          $results = Invoke-ScriptAnalyzer -Path claude-sandbox.ps1 -Severity Error, Warning `
-            -ExcludeRule PSAvoidUsingWriteHost
+          $results = foreach ($f in 'claude-sandbox.ps1', 'install.ps1') {
+            Invoke-ScriptAnalyzer -Path $f -Severity Error, Warning -ExcludeRule PSAvoidUsingWriteHost
+          }
           $results | Format-Table -AutoSize | Out-String | Write-Host
           if ($results) { exit 1 }

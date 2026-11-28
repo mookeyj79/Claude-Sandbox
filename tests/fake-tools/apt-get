@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: apt-get. install records packages, and puts gh and sbx on PATH.
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+case "$1" in
+    update) exit 0 ;;
+    remove) shift; for p in "$@"; do [ "$p" = -y ] && continue; grep -vx "$p" "$FAKE_TOOLS_DIR/packages" > "$FAKE_TOOLS_DIR/p.tmp" || true; mv "$FAKE_TOOLS_DIR/p.tmp" "$FAKE_TOOLS_DIR/packages"; rm -f "$FAKE_TOOLS_DIR/bin/$p"; done; exit 0 ;;
+    install) shift ;;
+    *) echo "fake apt-get: unsupported $*" >&2; exit 2 ;;
+esac
+for p in "$@"; do
+    [ "$p" = -y ] && continue
+    [ -e "$FAKE_TOOLS_DIR/apt-fails-$(basename "$p")" ] && { echo "E: Unable to locate package $p" >&2; exit 100; }
+done
+for p in "$@"; do
+    case "$p" in
+        -y) continue ;;
+        gh) ln -sf "$FAKE_TOOLS_SRC/gh" "$FAKE_TOOLS_DIR/bin/gh" ;;
+        docker-sbx | */DockerSandboxes-*.deb) ln -sf "$FAKE_TOOLS_SBX" "$FAKE_TOOLS_DIR/bin/sbx"; p=docker-sbx ;;
+    esac
+    echo "$p" >> "$FAKE_TOOLS_DIR/packages"
+done

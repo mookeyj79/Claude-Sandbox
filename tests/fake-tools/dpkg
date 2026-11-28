@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Fake for tests/install.bats: dpkg --print-architecture and dpkg -s.
+# State and the call log live in $FAKE_TOOLS_DIR (see tests/install.bats).
+echo "$(basename "$0") $*" >> "$FAKE_TOOLS_DIR/calls"
+case "$1" in
+    --print-architecture) echo "${FAKE_ARCH:-amd64}" ;;
+    -s) grep -qx "$2" "$FAKE_TOOLS_DIR/packages" 2>/dev/null ;;
+    *) exit 2 ;;
+esac
